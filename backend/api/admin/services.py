@@ -1,0 +1,308 @@
+import math
+from typing import Optional
+from extensions.keycloak import get_keycloak
+from utils.custom_exception import (
+    UserNotFoundException,
+    EmailAlreadyExistsException,
+    RoleNotFoundException,
+    RoleAlreadyExistsException,
+    ServerException
+)
+from .schema import (UserInfo, 
+    UserPagination, 
+    CreateUserRequest, 
+    CreateUserResponse,
+    UpdateUserRequest, 
+    RoleInfo, 
+    CreateRoleRequest, 
+    CreateRoleResponse, 
+    UpdateRoleRequest, 
+    RoleList
+)
+
+keycloak = get_keycloak()
+keycloak_openid = keycloak.keycloak_openid
+keycloak_admin = keycloak.keycloak_admin
+
+async def get_all_users(
+    name: Optional[str] = None,
+    status: Optional[str] = None,
+    role: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 10,
+    sort_by: Optional[str] = None,
+    desc: bool = False
+) -> UserPagination:
+    """Get all users, support filtering, pagination and sorting"""
+    try:
+        # Get all users
+        users = await keycloak_admin.a_get_users()
+        user_list = []
+        
+        # Process each user data
+        for user in users:
+            # Get custom_roles
+            custom_roles = []
+            if user.get("attributes") and "roles" in user["attributes"]:
+                custom_roles = [r for r in user["attributes"]["roles"] if keycloak.is_custom_role(r)]
+            if not custom_roles:
+                continue
+            
+            # Get user's last login time
+            last_login = await keycloak.get_user_last_login(user["id"])
+            if not last_login:
+                last_login = None
+            
+            # Get phone number (possibly in attributes)
+            phone = None
+            if user.get("attributes") and "phone" in user["attributes"]:
+                phone_list = user["attributes"]["phone"]
+                phone = phone_list[0] if phone_list and len(phone_list) > 0 else None
+            
+            user_info = UserInfo(
+                id=user["id"],
+                username=user.get("username", ""),
+                firstName=user.get("firstName", ""),
+                lastName=user.get("lastName", ""),
+                email=user.get("email"),
+                phone=phone,
+                enabled=user.get("enabled", True),
+                roles=custom_roles,
+                lastLogin=last_login
+            )
+            user_list.append(user_info)
+        
+        # Apply filter conditions
+        filtered_users = user_list
+        
+        # Filter by name (search firstName, lastName, username)
+        if name:
+            name_lower = name.lower()
+            filtered_users = [
+                user for user in filtered_users
+                if (name_lower in user.firstName.lower() if user.firstName else False) or
+                   (name_lower in user.lastName.lower() if user.lastName else False) or
+                   (name_lower in user.username.lower() if user.username else False)
+            ]
+        
+        # Filter by status
+        if status:
+            status_list = [s.strip().lower() == 'true' for s in status.split(',')]
+            if len(status_list) == 1:
+                # Only one status condition
+                filtered_users = [user for user in filtered_users if user.enabled == status_list[0]]
+        
+        # Filter by role
+        if role:
+            role_list = [r.strip() for r in role.split(',')]
+            filtered_users = [
+                user for user in filtered_users
+                if any(user_role in role_list for user_role in user.roles)
+            ]
+        
+        # Calculate total
+        total = len(filtered_users)
+        
+        # Sort
+        if sort_by:
+            reverse = desc
+            if sort_by == "username":
+                filtered_users.sort(key=lambda x: x.username or "", reverse=reverse)
+            elif sort_by == "firstName":
+                filtered_users.sort(key=lambda x: x.firstName or "", reverse=reverse)
+            elif sort_by == "lastName":
+                filtered_users.sort(key=lambda x: x.lastName or "", reverse=reverse)
+            elif sort_by == "email":
+                filtered_users.sort(key=lambda x: x.email or "", reverse=reverse)
+            elif sort_by == "phone":
+                filtered_users.sort(key=lambda x: x.phone or "", reverse=reverse)
+            elif sort_by == "enabled":
+                filtered_users.sort(key=lambda x: x.enabled, reverse=reverse)
+            elif sort_by == "lastLogin":
+                filtered_users.sort(key=lambda x: x.lastLogin or "", reverse=reverse)
+        
+        # Pagination
+        total_pages = math.ceil(total / per_page) if total > 0 else 1
+        start_index = (page - 1) * per_page
+        end_index = start_index + per_page
+        paginated_users = filtered_users[start_index:end_index]
+        
+        return UserPagination(
+            page=page,
+            pages=total_pages,
+            per_page=per_page,
+            total=total,
+            users=paginated_users
+        )
+        
+    except Exception as e:
+        raise ServerException(f"Failed to get users: {str(e)}")
+
+async def create_user(user_data: CreateUserRequest) -> CreateUserResponse:
+    """Create a new user"""
+    try:
+        # Prepare attributes
+        attributes = {}
+        if user_data.phone:
+            attributes["phone"] = [user_data.phone]
+        
+        user_payload = {
+            "username": user_data.username,
+            "email": user_data.email,
+            "firstName": user_data.firstName,
+            "lastName": user_data.lastName,
+            "enabled": user_data.enabled,
+            "emailVerified": False,
+            "credentials": [{
+                "type": "password",
+                "value": user_data.password,
+                "temporary": True
+            }]
+        }
+        
+        # Add attributes only if present
+        if attributes:
+            user_payload["attributes"] = attributes
+        
+        user_id = await keycloak_admin.a_create_user(user_payload)
+        return CreateUserResponse(user_id=user_id)
+    except Exception as e:
+        if "exists" in str(e).lower():
+            raise EmailAlreadyExistsException("username or email", f"{user_data.username}/{user_data.email}")
+        raise ServerException(f"Failed to create user: {str(e)}")
+
+async def update_user(user_id: str, user_data: UpdateUserRequest) -> None:
+    """Update user information"""
+    try:
+        update_payload = user_data.dict(exclude_unset=True)
+        # Check if email has changed
+        if "email" in update_payload:
+            current_user = await keycloak_admin.a_get_user(user_id)
+            current_email = current_user.get("email")
+            new_email = update_payload["email"]
+            if new_email and new_email != current_email:
+                users_with_email = await keycloak_admin.a_get_users({"email": new_email})
+                if users_with_email and any(u["id"] != user_id for u in users_with_email):
+                    raise EmailAlreadyExistsException(f"email: {new_email}")
+        # Handle phone field, move it to attributes
+        if "phone" in update_payload:
+            phone = update_payload.pop("phone")
+            if phone is not None:
+                update_payload.setdefault("attributes", {})
+                update_payload["attributes"]["phone"] = [phone]
+            else:
+                # If phone is None, remove the attribute
+                update_payload.setdefault("attributes", {})
+                update_payload["attributes"]["phone"] = []
+        await keycloak_admin.a_update_user(user_id, update_payload)
+    except EmailAlreadyExistsException:
+        raise
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise UserNotFoundException(f"user_id: {user_id}")
+        raise ServerException(f"Failed to update user {user_id}: {str(e)}")
+
+async def delete_user(user_id: str) -> None:
+    """Delete user"""
+    try:
+        await keycloak_admin.a_delete_user(user_id)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise UserNotFoundException(f"user_id: {user_id}")
+        raise ServerException(f"Failed to delete user {user_id}: {str(e)}")
+
+async def reset_user_password(user_id: str, new_password: str) -> None:
+    """Reset user password"""
+    try:
+        await keycloak_admin.a_set_user_password(user_id, new_password, temporary=True)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise UserNotFoundException(f"user_id: {user_id}")
+        raise ServerException(f"Failed to reset password for user {user_id}: {str(e)}")
+
+async def get_all_roles() -> RoleList:
+    """Get all roles"""
+    try:
+        roles = await keycloak_admin.a_get_realm_roles()
+        role_list = []
+        for role in roles:
+            if not keycloak.is_custom_role(role["name"]):
+                continue
+            full_role = await keycloak_admin.a_get_realm_role(role["name"])
+            role_info = RoleInfo(
+                id=role["id"],
+                role_name=role["name"],
+                description=role.get("description"),
+                attributes=full_role.get("attributes") if full_role.get("attributes") else None
+            )
+            role_list.append(role_info)
+        return RoleList(roles=role_list)
+    except Exception as e:
+        raise ServerException(f"Failed to get roles: {str(e)}")
+
+async def create_role(role_data: CreateRoleRequest) -> CreateRoleResponse:
+    """Create a new role"""
+    try:
+        role_payload = {
+            "name": role_data.name,
+            "description": role_data.description,
+        }
+        await keycloak_admin.a_create_realm_role(role_payload)
+        return CreateRoleResponse(role_name=role_data.name)
+    except Exception as e:
+        if "exists" in str(e).lower():
+            raise RoleAlreadyExistsException(f"role_name: {role_data.name}")
+        raise ServerException(f"Failed to create role {role_data.name}: {str(e)}")
+
+async def update_role(role_name: str, role_data: UpdateRoleRequest) -> None:
+    """Update role description only"""
+    try:
+        existing_role = await keycloak_admin.a_get_realm_role(role_name)
+        update_payload = {
+            "name": role_name,
+            "description": role_data.description if role_data.description is not None else existing_role.get("description"),
+        }
+        await keycloak_admin.a_update_realm_role(role_name, update_payload)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise RoleNotFoundException(role_name)
+        raise ServerException(f"Failed to update role {role_name}: {str(e)}")
+
+async def update_role_attributes(role_name: str, attributes: dict) -> None:
+    """Update role attributes only - merge with existing attributes"""
+    try:
+        existing_role = await keycloak_admin.a_get_realm_role(role_name)
+        
+        # 獲取現有的屬性，如果沒有則建立空字典
+        existing_attributes = existing_role.get("attributes", {})
+        
+        # 合併現有屬性與新屬性（新屬性會覆蓋同名的現有屬性）
+        merged_attributes = existing_attributes.copy()
+        merged_attributes.update(attributes)
+        
+        # 建立完整的更新負載
+        update_payload = {
+            "name": role_name,
+            "description": existing_role.get("description", ""),
+            "composite": existing_role.get("composite", False),
+            "clientRole": existing_role.get("clientRole", False),
+            "containerId": existing_role.get("containerId"),
+            "attributes": merged_attributes
+        }
+        
+        update_payload = {k: v for k, v in update_payload.items() if v is not None}
+        
+        await keycloak_admin.a_update_realm_role(role_name, update_payload)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise RoleNotFoundException(role_name)
+        raise ServerException(f"Failed to update role attributes for {role_name}: {str(e)}")
+
+async def delete_role(role_name: str) -> None:
+    """Delete role"""
+    try:
+        await keycloak_admin.a_delete_realm_role(role_name)
+    except Exception as e:
+        if "not found" in str(e).lower():
+            raise RoleNotFoundException(f"role_name: {role_name}")
+        raise ServerException(f"Failed to delete role {role_name}: {str(e)}")

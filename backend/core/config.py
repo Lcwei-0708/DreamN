@@ -36,6 +36,17 @@ class Settings(BaseSettings):
 
     # Other settings
     DEBUG: bool = True
+    FAIL_LIMIT: int = 10  # Failed attempts limit
+    FAIL_WINDOW: int = 600  # Failed attempts window (seconds), e.g. 10 minutes
+    BLOCK_TIME: int = 1800  # Block time (seconds), e.g. 30 minutes
+
+    # Keycloak settings
+    KEYCLOAK_SERVER_URL: str
+    KEYCLOAK_REALM: str
+    KEYCLOAK_CLIENT: str
+    KEYCLOAK_ADMIN_CLIENT: str
+    KEYCLOAK_ADMIN_CLIENT_SECRET: str
+    KEYCLOAK_VERIFY: bool = False
 
 # Create a settings instance to be imported elsewhere
 settings = Settings()

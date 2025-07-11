@@ -10,6 +10,9 @@ class APIResponse(BaseModel, Generic[T]):
     message: str
     data: Optional[T] = None
 
+    class Config:
+        exclude_none = True
+
 class ValidationErrorData(RootModel[dict[str, str]]):
     """Model for validation error data structure"""
     pass
@@ -96,10 +99,12 @@ def generate_property_example(prop: dict, key: str = "", full_schema: dict = Non
         else:
             return f"Example {key.replace('_', ' ').title()}"
     elif prop_type == "integer":
-        if "page" in key.lower():
-            return 1
-        elif "per_page" in key.lower():
+        if "per_page" in key.lower():
             return 10
+        elif "pages" in key.lower():
+            return 10        
+        elif "page" in key.lower():
+            return 1
         else:
             return 100
     elif prop_type == "number":
@@ -116,6 +121,11 @@ def generate_property_example(prop: dict, key: str = "", full_schema: dict = Non
                 return [item_example] if item_example else []
         return []
     elif prop_type == "object":
+        # Handle Dict[str, List[str]]
+        if "additionalProperties" in prop:
+            ap = prop["additionalProperties"]
+            if ap.get("type") == "array" and ap.get("items", {}).get("type") == "string":
+                return {"key_1": ["value_1"]}
         return generate_example_from_schema(prop)
     elif prop.get("format") == "date-time":
         return datetime.now().isoformat() + "Z"
@@ -153,6 +163,24 @@ def resolve_ref(ref_path: str, schema: dict) -> dict:
         return None
 
 common_responses = {
+    401: (
+        "Invalid or expired token",
+        APIResponse[None],
+        {
+            "code": 401,
+            "message": "Invalid or expired token",
+            "data": None
+        }
+    ),
+    403: (
+        "Permission denied",
+        APIResponse[None],
+        {
+            "code": 403,
+            "message": "Permission denied",
+            "data": None
+        }
+    ),
     422: (
         "Validation Error",
         APIResponse[ValidationErrorData],
@@ -163,11 +191,11 @@ common_responses = {
         }
     ),
     429: (
-        "Too Many Requests",
+        "Too many failed attempts. Try again later.",
         APIResponse[None],
         {
             "code": 429,
-            "message": "Too Many Requests",
+            "message": "Too many failed attempts. Try again later.",
             "data": None
         }
     ),

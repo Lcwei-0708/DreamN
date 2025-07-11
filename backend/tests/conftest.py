@@ -1,31 +1,14 @@
 import pytest
 import asyncio
 import pytest_asyncio
-import fastapi_limiter
 from main import app
 from core.config import settings
 from core.dependencies import get_db
 from sqlalchemy.pool import StaticPool
+from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient, ASGITransport
 from core.database import Base, make_async_url
-from unittest.mock import AsyncMock, patch, MagicMock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-
-mock_redis = AsyncMock()
-mock_redis.evalsha.return_value = 1000  # Indicates 1000ms remaining
-
-async def fake_http_callback(request, response, pexpire):
-    return
-
-async def fake_identifier(request):
-    return "test"
-
-fastapi_limiter.FastAPILimiter.redis = mock_redis
-fastapi_limiter.FastAPILimiter.prefix = "fastapi-limiter"
-fastapi_limiter.FastAPILimiter.lua_sha = "dummy_sha"
-fastapi_limiter.FastAPILimiter.identifier = fake_identifier
-fastapi_limiter.FastAPILimiter.http_callback = fake_http_callback
-
 
 @pytest_asyncio.fixture(scope="function")
 async def test_engine():
@@ -78,38 +61,71 @@ async def test_db_session(test_engine):
         try:
             yield session
         finally:
+            # Check if transaction is still active before rollback
             try:
                 if transaction.is_active:
                     await transaction.rollback()
             except Exception:
+                # Transaction might already be closed, ignore the error
                 pass
 
 
 @pytest_asyncio.fixture
-async def client(test_db_session):
+async def mock_redis():
     """
-    Create a test HTTP client with database dependency override.
-    Ensures each test uses its isolated database session.
+    Provide a mock Redis instance to avoid real Redis connection issues
     """
+    mock = AsyncMock()
+    # Set default return values for common Redis methods
+    mock.exists.return_value = False
+    mock.incr.return_value = 1
+    mock.expire.return_value = True
+    mock.keys.return_value = []
+    mock.delete.return_value = 0
+    mock.set.return_value = True
+    mock.close.return_value = None
     
+    return mock
+
+
+@pytest_asyncio.fixture
+async def client(test_db_session, mock_redis):
+    """
+    Create a test HTTP client with database and Redis dependency overrides.
+    """
+    # Override the database dependency to use test session
     async def override_get_db():
         yield test_db_session
     
-    # Apply the dependency override
+    # Apply the dependency overrides
     app.dependency_overrides[get_db] = override_get_db
-
-    try:
-        # Create HTTP client using ASGI transport
-        transport = ASGITransport(app=app)
-        async with AsyncClient(
-            transport=transport, 
-            base_url="http://testserver",
-            timeout=30.0
-        ) as ac:
-            yield ac
-    finally:
-        # Always clean up dependency overrides
-        app.dependency_overrides.clear()
+    
+    from unittest.mock import Mock
+    mock_keycloak = Mock()
+    mock_keycloak_admin = Mock()
+    mock_keycloak_admin.get_users.return_value = []  # No users
+    mock_keycloak_admin.get_realm_roles_of_user.return_value = []  # No roles
+    mock_keycloak.keycloak_admin = mock_keycloak_admin
+    
+    # Use patch to replace get_redis and get_keycloak in all modules
+    with patch('core.redis.get_redis', return_value=mock_redis), \
+         patch('core.dependencies.get_redis', return_value=mock_redis), \
+         patch('middleware.auth_rate_limiter.get_redis', return_value=mock_redis), \
+         patch('main.get_redis', return_value=mock_redis), \
+         patch('extensions.keycloak.get_keycloak', return_value=mock_keycloak):
+        
+        try:
+            # Create HTTP client using ASGI transport
+            transport = ASGITransport(app=app)
+            async with AsyncClient(
+                transport=transport, 
+                base_url="http://testserver",
+                timeout=30.0
+            ) as ac:
+                yield ac
+        finally:
+            # Always clean up dependency overrides
+            app.dependency_overrides.clear()
 
 
 @pytest.fixture(scope="session")
@@ -123,48 +139,3 @@ def event_loop():
     asyncio.set_event_loop(loop)
     yield loop
     loop.close()
-
-
-@pytest.fixture(autouse=True)
-def mock_other_components():
-    """Mock startup components that are not needed for testing"""
-    with patch("schedule.register_schedules"), \
-         patch("schedule.scheduler.start"), \
-         patch("schedule.scheduler.shutdown"), \
-         patch("core.redis.init_redis", new=AsyncMock()), \
-         patch("core.config.setup_logging"), \
-         patch("core.redis.get_redis", return_value=MagicMock()):
-        yield
-
-
-# Mock RateLimiter to always allow requests
-@pytest.fixture(autouse=True)
-def mock_rate_limiter():
-    """Mock RateLimiter to always allow requests"""    
-    class MockRateLimiter:
-        def __init__(self, *args, **kwargs):
-            pass        
-        
-        def __call__(self, *args, **kwargs):
-            return None
-            
-    with patch("fastapi_limiter.depends.RateLimiter", MockRateLimiter):
-        yield
-
-
-# Optional: Add database utility fixtures for advanced testing scenarios
-@pytest_asyncio.fixture
-async def db_transaction(test_db_session):
-    """
-    Provide explicit transaction control for tests that need it.
-    Useful for testing transaction-specific behavior.
-    """
-    transaction = await test_db_session.begin()
-    try:
-        yield transaction
-    finally:
-        try:
-            if transaction.is_active:
-                await transaction.rollback()
-        except Exception:
-            pass

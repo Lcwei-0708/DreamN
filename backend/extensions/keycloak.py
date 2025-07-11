@@ -1,0 +1,127 @@
+import logging
+import datetime
+from typing import Optional
+from functools import wraps
+from core.config import settings
+from fastapi import HTTPException
+from keycloak import KeycloakAdmin, KeycloakOpenID
+
+class KeycloakExtension:
+    def __init__(self):
+        # keycloak config
+        self.server_url = settings.KEYCLOAK_SERVER_URL
+        self.realm_name = settings.KEYCLOAK_REALM
+        self.client_id = settings.KEYCLOAK_ADMIN_CLIENT
+        self.client_secret_key = settings.KEYCLOAK_ADMIN_CLIENT_SECRET
+        self.verify = settings.KEYCLOAK_VERIFY
+        # keycloak admin
+        self.keycloak_admin = KeycloakAdmin(
+            server_url=self.server_url,
+            realm_name=self.realm_name,
+            client_id=self.client_id,
+            client_secret_key=self.client_secret_key,
+            verify=self.verify
+        )
+        # keycloak openid
+        self.keycloak_openid = KeycloakOpenID(
+            server_url=self.server_url,
+            realm_name=self.realm_name,
+            client_id=self.client_id,
+            client_secret_key=self.client_secret_key,
+            verify=self.verify
+        )
+
+    def require_permission(self, module_name: str):
+        logger = logging.getLogger("keycloak_permission")
+        def decorator(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                token = kwargs.get("token")
+                if not token:
+                    raise HTTPException(status_code=401)
+                user_id = await self.get_user_id(token)
+                if not user_id:
+                    raise HTTPException(status_code=401)
+
+                user_roles = await self.keycloak_admin.a_get_realm_roles_of_user(user_id)
+                logger.info(f"{user_id}: {user_roles}")
+
+                for role in user_roles:
+                    role_name = role["name"]
+                    role_info = await self.keycloak_admin.a_get_realm_role(role_name)
+                    attributes = role_info.get("attributes", {})
+                    if attributes.get(module_name, ["false"])[0].lower() == "true":
+                        return await func(*args, **kwargs)
+
+                logger.info(f"Permission denied for user {user_id} on module {module_name}. Checked roles: {[r['name'] for r in user_roles]}")
+                raise HTTPException(status_code=403)
+            return wrapper
+        return decorator
+    
+    async def verify_token(self, token: str):
+        logger = logging.getLogger("keycloak_verify")
+        try:
+            userinfo = await self.keycloak_openid.a_userinfo(token)
+            if userinfo:
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"verify token error: {e}")
+            return False
+
+    async def get_user_id(self, token: str):
+        try:
+            userinfo = await self.keycloak_openid.a_userinfo(token)
+            if userinfo:
+                return userinfo.get("sub")
+            return None
+        except Exception:
+            return None
+
+    async def get_user_last_login(self, user_id: str):
+        logger = logging.getLogger("keycloak_event")
+        try:
+            events_resp = await self.keycloak_admin.connection.a_raw_get(
+                f"/admin/realms/{self.realm_name}/events",
+                type="LOGIN",
+                user=user_id
+            )
+            events = events_resp.json() if hasattr(events_resp, 'json') else events_resp
+            if events and isinstance(events, list):
+                events.sort(key=lambda e: e.get("time", 0), reverse=True)
+                last_event = events[0] if events else None
+                if last_event:
+                    ts = last_event["time"] / 1000
+                    local_dt = datetime.datetime.fromtimestamp(ts).astimezone()
+                    last_login = local_dt.isoformat()
+                    return last_login
+            logger.warning(f"user {user_id} no login event found or events is not a list")
+            return None
+        except Exception as e:
+            logger.error(f"Error occurred while querying user {user_id} event: {e}")
+            return None
+    
+    def is_custom_role(self, role_name):
+        default_roles = [
+            "two-shoulder", "offline_access", "uma_authorization"
+        ]
+        if role_name.startswith("default-roles-"):
+            return False
+        if role_name in default_roles:
+            return False
+        return True
+
+_KEYCLOAK_EXTENSION: Optional[KeycloakExtension] = None
+
+def get_keycloak() -> KeycloakExtension:
+    global _KEYCLOAK_EXTENSION
+    if _KEYCLOAK_EXTENSION is None:
+        _KEYCLOAK_EXTENSION = KeycloakExtension()
+    return _KEYCLOAK_EXTENSION
+
+def add_keycloak(app):
+    """
+    Register keycloak to app.state
+    """
+    keycloak_ext = get_keycloak()
+    app.state.keycloak = keycloak_ext.keycloak_admin
