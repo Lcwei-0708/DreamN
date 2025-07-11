@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock
+from datetime import datetime
 
 @pytest.mark.asyncio
 async def test_get_users_success(client):
@@ -35,6 +36,7 @@ async def test_get_users_success(client):
     
     fake_user_roles = [{"name": "admin"}]
     fake_role_info = {"attributes": {"admin": ["true"]}}
+    fake_last_login = datetime.fromisoformat("2024-06-29T12:00:00+08:00")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -42,7 +44,7 @@ async def test_get_users_success(client):
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_role", new_callable=AsyncMock, return_value=fake_role_info), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_users", new_callable=AsyncMock, return_value=fake_users), \
          patch("extensions.keycloak.KeycloakExtension.is_custom_role", new_callable=AsyncMock, return_value=True), \
-         patch("extensions.keycloak.KeycloakExtension.get_user_last_login", new_callable=AsyncMock, return_value="2024-06-29T12:00:00+08:00"):
+         patch("websocket.manager.ConnectionManager.get_user_last_ws_login", new_callable=AsyncMock, return_value=(True, fake_last_login)):
         response = await client.get(
             "/api/admin/users",
             headers={"Authorization": f"Bearer {fake_token}"}
@@ -58,6 +60,7 @@ async def test_get_users_with_filters(client):
     fake_users = []
     fake_user_roles = [{"name": "admin"}]
     fake_role_info = {"attributes": {"admin": ["true"]}}
+    fake_last_login = datetime.fromisoformat("2024-06-29T12:00:00+08:00")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -65,7 +68,7 @@ async def test_get_users_with_filters(client):
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_role", new_callable=AsyncMock, return_value=fake_role_info), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_users", new_callable=AsyncMock, return_value=fake_users), \
          patch("extensions.keycloak.KeycloakExtension.is_custom_role", new_callable=AsyncMock, return_value=True), \
-         patch("extensions.keycloak.KeycloakExtension.get_user_last_login", new_callable=AsyncMock, return_value=None):
+         patch("websocket.manager.ConnectionManager.get_user_last_ws_login", new_callable=AsyncMock, return_value=(False, fake_last_login)):
         response = await client.get(
             "/api/admin/users?name=test&status=true&role=admin&page=1&per_page=5&sort_by=username&desc=false",
             headers={"Authorization": f"Bearer {fake_token}"}

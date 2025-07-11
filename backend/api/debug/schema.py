@@ -12,3 +12,7 @@ class IPDebugResponse(BaseModel):
 class ClearBlockedIPsResponse(BaseModel):
     cleared_ips: List[str] = Field(..., description="被清除封鎖的 IP 列表")
     count: int = Field(..., description="被清除的 IP 數量")
+
+class ClearWSConnectionsResponse(BaseModel):
+    cleared_keys: List[str] = Field(..., description="被清除的 key 列表")
+    count: int = Field(..., description="被清除的 key 數量")

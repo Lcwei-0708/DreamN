@@ -1,7 +1,8 @@
 from typing import Optional
 from core.security import verify_token
 from extensions.keycloak import get_keycloak
-from core.dependencies import rate_limit_on_auth_fail
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.dependencies import get_db, rate_limit_on_auth_fail
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from utils.response import APIResponse, parse_responses, common_responses
 from .schema import (
@@ -40,6 +41,7 @@ router = APIRouter(tags=["admin"])
 async def get_users(
     request: Request,
     token: str = Depends(verify_token),
+    db: AsyncSession = Depends(get_db),
     name: Optional[str] = Query(None, description="User name filter"),
     status: Optional[str] = Query(None, description="User status filter (multiple values separated by commas, e.g.: true,false)"),
     role: Optional[str] = Query(None, description="User role filter (multiple values separated by commas, e.g.: admin,manager)"),
@@ -50,6 +52,7 @@ async def get_users(
 ):
     try:
         data = await get_all_users(
+            db=db,
             name=name,
             status=status,
             role=role,

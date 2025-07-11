@@ -30,3 +30,20 @@ async def clear_blocked_ips() -> ClearBlockedIPsResponse:
         return ClearBlockedIPsResponse(cleared_ips=cleared, count=len(cleared))
     except Exception as e:
         raise ServerException(f"Failed to clear blocked IPs: {e}")
+
+async def clear_all_ws_connections():
+    try:
+        redis = await aioredis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+        online_users_keys = await redis.keys("ws:online_users*")
+        userinfo_keys = await redis.keys("ws:userinfo:*")
+        all_keys = online_users_keys + userinfo_keys
+        cleared = []
+        if all_keys:
+            for key in all_keys:
+                await redis.delete(key)
+                cleared.append(key)
+        await redis.delete("ws:online_users")
+        cleared.append("ws:online_users")
+        return {"cleared_keys": cleared, "count": len(cleared)}
+    except Exception as e:
+        raise ServerException(f"Failed to clear all ws connections: {e}")

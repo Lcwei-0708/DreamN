@@ -77,29 +77,6 @@ class KeycloakExtension:
             return None
         except Exception:
             return None
-
-    async def get_user_last_login(self, user_id: str):
-        logger = logging.getLogger("keycloak_event")
-        try:
-            events_resp = await self.keycloak_admin.connection.a_raw_get(
-                f"/admin/realms/{self.realm_name}/events",
-                type="LOGIN",
-                user=user_id
-            )
-            events = events_resp.json() if hasattr(events_resp, 'json') else events_resp
-            if events and isinstance(events, list):
-                events.sort(key=lambda e: e.get("time", 0), reverse=True)
-                last_event = events[0] if events else None
-                if last_event:
-                    ts = last_event["time"] / 1000
-                    local_dt = datetime.datetime.fromtimestamp(ts).astimezone()
-                    last_login = local_dt.isoformat()
-                    return last_login
-            logger.warning(f"user {user_id} no login event found or events is not a list")
-            return None
-        except Exception as e:
-            logger.error(f"Error occurred while querying user {user_id} event: {e}")
-            return None
     
     def is_custom_role(self, role_name):
         default_roles = [

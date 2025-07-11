@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import patch, AsyncMock
+from datetime import datetime
 from utils.custom_exception import ServerException, InvalidPasswordException
 
 @pytest.mark.asyncio
@@ -16,12 +17,12 @@ async def test_get_user_info_success(client):
         "realm_access": {"roles": ["user"]}
     }
     fake_roles = [{"name": "user"}]
-    fake_last_login = "2024-06-29T12:00:00+08:00"
+    fake_last_login = datetime.fromisoformat("2024-06-29T12:00:00+08:00")
 
     with patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
          patch("extensions.keycloak.KeycloakOpenID.a_userinfo", new_callable=AsyncMock, return_value=fake_userinfo), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_roles_of_user", new_callable=AsyncMock, return_value=fake_roles), \
-         patch("extensions.keycloak.KeycloakExtension.get_user_last_login", new_callable=AsyncMock, return_value=fake_last_login):
+         patch("websocket.manager.ConnectionManager.get_user_last_ws_login", new_callable=AsyncMock, return_value=(True, fake_last_login)):
 
         response = await client.get(
             "/api/user/info",
@@ -32,7 +33,7 @@ async def test_get_user_info_success(client):
         assert data["id"] == "user123"
         assert data["username"] == "testuser"
         assert data["roles"] == ["user"]
-        assert data["lastLogin"] == fake_last_login
+        assert data["lastLogin"] == fake_last_login.astimezone().isoformat()
 
 @pytest.mark.asyncio
 async def test_get_user_info_invalid_token(client):

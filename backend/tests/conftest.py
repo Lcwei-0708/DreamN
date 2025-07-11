@@ -85,6 +85,16 @@ async def mock_redis():
     mock.set.return_value = True
     mock.close.return_value = None
     
+    # WebSocket related Redis methods
+    mock.smembers.return_value = set()  # No online users
+    mock.hgetall.return_value = {}      # No connection info
+    mock.get.return_value = None        # No user info
+    mock.sadd.return_value = True
+    mock.srem.return_value = True
+    mock.hset.return_value = True
+    mock.hdel.return_value = True
+    mock.hlen.return_value = 0
+    
     return mock
 
 
@@ -100,6 +110,7 @@ async def client(test_db_session, mock_redis):
     # Apply the dependency overrides
     app.dependency_overrides[get_db] = override_get_db
     
+    # Mock Keycloak for WebSocket tests
     from unittest.mock import Mock
     mock_keycloak = Mock()
     mock_keycloak_admin = Mock()
@@ -112,7 +123,11 @@ async def client(test_db_session, mock_redis):
          patch('core.dependencies.get_redis', return_value=mock_redis), \
          patch('middleware.auth_rate_limiter.get_redis', return_value=mock_redis), \
          patch('main.get_redis', return_value=mock_redis), \
-         patch('extensions.keycloak.get_keycloak', return_value=mock_keycloak):
+         patch('api.websocket.services.get_redis', return_value=mock_redis), \
+         patch('websocket.manager.get_redis', return_value=mock_redis), \
+         patch('websocket.endpoint.get_redis', return_value=mock_redis), \
+         patch('extensions.keycloak.get_keycloak', return_value=mock_keycloak), \
+         patch('websocket.manager.get_keycloak', return_value=mock_keycloak):
         
         try:
             # Create HTTP client using ASGI transport

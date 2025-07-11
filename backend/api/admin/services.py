@@ -1,6 +1,8 @@
 import math
 from typing import Optional
+from websocket.manager import get_manager
 from extensions.keycloak import get_keycloak
+from sqlalchemy.ext.asyncio import AsyncSession
 from utils.custom_exception import (
     UserNotFoundException,
     EmailAlreadyExistsException,
@@ -20,11 +22,13 @@ from .schema import (UserInfo,
     RoleList
 )
 
+ws_manager = get_manager()
 keycloak = get_keycloak()
 keycloak_openid = keycloak.keycloak_openid
 keycloak_admin = keycloak.keycloak_admin
 
 async def get_all_users(
+    db: AsyncSession,
     name: Optional[str] = None,
     status: Optional[str] = None,
     role: Optional[str] = None,
@@ -45,12 +49,12 @@ async def get_all_users(
             custom_roles = []
             if user.get("attributes") and "roles" in user["attributes"]:
                 custom_roles = [r for r in user["attributes"]["roles"] if keycloak.is_custom_role(r)]
-            if not custom_roles:
-                continue
             
-            # Get user's last login time
-            last_login = await keycloak.get_user_last_login(user["id"])
-            if not last_login:
+            # Get last login status and time
+            _, last_login_dt = await ws_manager.get_user_last_ws_login(user["id"], db)
+            if last_login_dt:
+                last_login = last_login_dt.astimezone().isoformat()
+            else:
                 last_login = None
             
             # Get phone number (possibly in attributes)
