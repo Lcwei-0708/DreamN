@@ -1,0 +1,6 @@
+{
+  "Home": {
+    "title": "DreamN",
+    "description": "DreamN is a full-stack web development boilerplate based on <bold>Docker</bold>, <bold>React</bold>, <bold>FastAPI</bold>, <bold>MariaDB</bold>, and <bold>Nginx</bold>."
+  }
+}

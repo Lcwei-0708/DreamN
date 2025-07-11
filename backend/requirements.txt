@@ -1,0 +1,40 @@
+# Web framework & server
+fastapi[all]
+uvicorn
+gunicorn
+asgi-lifespan
+fastapi-limiter
+
+# Database & ORM
+sqlalchemy[asyncio]
+alembic
+
+# Async drivers
+aiomysql
+pymysql
+
+# Config & env
+python-dotenv
+pydantic
+pydantic-settings
+
+# Security & auth
+python-jose
+passlib
+bcrypt
+
+# HTTP client
+requests
+httpx
+
+# Testing
+pytest
+pytest-asyncio
+coverage 
+pytest-cov
+
+# Scheduler/Task
+apscheduler
+
+# Redis
+redis

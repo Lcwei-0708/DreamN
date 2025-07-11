@@ -1,0 +1,7 @@
+# To allow all IPs, set 'default 1;' in `nginx.conf` (do not add 0.0.0.0/0 here)
+
+# Allow specific subnet
+172.16.0.0/24 1;
+
+# Allow specific IP
+172.16.0.1 1;
