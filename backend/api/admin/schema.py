@@ -18,8 +18,8 @@ class UserPagination(BaseModel):
     page: int = Field(..., description="當前頁碼")
     pages: int = Field(..., description="總頁數")
     per_page: int = Field(..., description="每頁顯示數量")
-    total: int = Field(..., description="總用戶數")
-    users: List[UserInfo] = Field(..., description="用戶列表")
+    total: int = Field(..., description="總使用者數量")
+    users: List[UserInfo] = Field(..., description="使用者列表")
 
 class UserSortBy(str, Enum):
     username = "username"

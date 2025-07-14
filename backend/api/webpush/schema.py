@@ -28,7 +28,7 @@ class UserWebPushInfo(BaseModel):
     subscriptions: List[WebPushSubscriptionInfo] = Field(..., description="訂閱列表")
 
 class WebPushSubscriptionsResponse(BaseModel):
-    total_users: int = Field(..., description="總用戶數")
+    total_users: int = Field(..., description="總使用者數量")
     total_subscriptions: int = Field(..., description="總訂閱數")
     users: List[UserWebPushInfo] = Field(..., description="使用者列表")
 

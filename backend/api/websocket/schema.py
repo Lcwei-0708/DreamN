@@ -10,14 +10,14 @@ class ConnectionInfo(BaseModel):
     ip: str = Field(..., description="連線 IP")
 
 class OnlineUserInfo(BaseModel):
-    user_id: str = Field(..., description="用戶 ID")
+    user_id: str = Field(..., description="使用者 ID")
     total_connections: int = Field(..., description="總連線數")
     connections: List[ConnectionInfo] = Field(..., description="連線列表")
 
 class OnlineUsersResponse(BaseModel):
-    total_users: int = Field(..., description="總用戶數")
+    total_users: int = Field(..., description="總使用者數量")
     total_connections: int = Field(..., description="總連線數")
-    users: List[OnlineUserInfo] = Field(..., description="用戶列表")
+    users: List[OnlineUserInfo] = Field(..., description="使用者列表")
 
 class BroadcastRequest(BaseModel):
     type: str = Field(..., description="訊息類型", example="info")
@@ -28,7 +28,7 @@ class BroadcastRequest(BaseModel):
     )
 
 class UserPushRequest(BaseModel):
-    user_id: str = Field(..., description="目標用戶ID", example="user_001")
+    user_id: str = Field(..., description="要推播的使用者 ID", example="user_001")
     type: str = Field(..., description="訊息類型", example="info")
     data: Dict = Field(
         ..., 
@@ -37,7 +37,7 @@ class UserPushRequest(BaseModel):
     )
 
 class RolePushRequest(BaseModel):
-    role: str = Field(..., description="Keycloak 角色名稱", example="admin")
+    role: str = Field(..., description="要推播的 Keycloak 角色", example="admin")
     type: str = Field(..., description="訊息類型", example="info")
     data: Dict = Field(
         ..., 
