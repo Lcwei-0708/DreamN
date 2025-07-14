@@ -42,7 +42,6 @@ cp whitelist.conf.example whitelist.conf
 Edit the whitelist.conf file to add your allowed IPs:
 ```bash
 # Example whitelist.conf content:
-0.0.0.0/0 1;         # Allow all IPs
-192.168.1.0/24 1;    # Allow specific subnet
-192.168.0.1 1;       # Allow specific IP
+172.16.0.0/24 1;    # Allow specific subnet
+172.16.0.1 1;       # Allow specific IP
 ```
