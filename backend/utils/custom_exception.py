@@ -68,3 +68,9 @@ class RoleAlreadyExistsException(BaseServiceException):
     def __init__(self, message: str = None, details: Dict[str, Any] = None):
         message = f"{message}" if message else "Role already exists"
         super().__init__(message, "ROLE_ALREADY_EXISTS", details, status_code=409, log_level="warning")
+
+class WebPushSubscriptionNotFoundException(BaseServiceException):
+    """Web push subscription not found exception"""
+    def __init__(self, message: str = None, details: Dict[str, Any] = None):
+        message = f"{message}" if message else "Web push subscription not found"
+        super().__init__(message, "WEB_PUSH_SUBSCRIPTION_NOT_FOUND", details, status_code=404, log_level="warning")

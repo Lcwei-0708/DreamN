@@ -92,6 +92,10 @@ services:
       - KEYCLOAK_CLIENT=${KEYCLOAK_CLIENT}
       - KEYCLOAK_ADMIN_CLIENT=${KEYCLOAK_ADMIN_CLIENT}
       - KEYCLOAK_ADMIN_CLIENT_SECRET=${KEYCLOAK_ADMIN_CLIENT_SECRET}
+      # Web push settings
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+      - VAPID_EMAIL=${VAPID_EMAIL}
     user: root
     command: ["sh", "./init-prod.sh"]
     depends_on:

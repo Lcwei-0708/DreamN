@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     KEYCLOAK_ADMIN_CLIENT_SECRET: str
     KEYCLOAK_VERIFY: bool = False
 
+    # Web push settings
+    VAPID_PRIVATE_KEY: str
+    VAPID_PUBLIC_KEY: str
+    VAPID_EMAIL: str
+
 # Create a settings instance to be imported elsewhere
 settings = Settings()
 

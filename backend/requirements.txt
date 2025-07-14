@@ -41,3 +41,6 @@ redis
 
 # keycloak
 python-keycloak
+
+# Web push
+pywebpush
