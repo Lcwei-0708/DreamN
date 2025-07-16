@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Depends
+from websocket.manager import get_manager, ConnectionManager
 from utils.response import APIResponse, parse_responses, common_responses
 from utils.custom_exception import UserNotFoundException, RoleNotFoundException
 from .services import fetch_online_users, push_message_to_user, push_message_to_role, broadcast_message
@@ -37,9 +39,12 @@ async def get_online_users():
         200: ("Message broadcasted successfully", None)
     }, default=common_responses)
 )
-async def broadcast_message_api(payload: BroadcastRequest):
+async def broadcast_message_api(
+    payload: BroadcastRequest,
+    ws_manager: Annotated[ConnectionManager, Depends(get_manager)]
+):
     try:
-        await broadcast_message(payload.type, payload.data)
+        await broadcast_message(payload.type, payload.data, ws_manager)
         return APIResponse(code=200, message="Message broadcasted successfully")
     except Exception:
         raise HTTPException(status_code=500)
@@ -54,9 +59,12 @@ async def broadcast_message_api(payload: BroadcastRequest):
         404: ("User not found or no connections", None)
     }, default=common_responses)
 )
-async def push_message(payload: UserPushRequest):
+async def push_message(
+    payload: UserPushRequest,
+    ws_manager: Annotated[ConnectionManager, Depends(get_manager)]
+):
     try:
-        await push_message_to_user(payload.user_id, payload.type, payload.data)
+        await push_message_to_user(payload.user_id, payload.type, payload.data, ws_manager)
         return APIResponse(code=200, message="Message pushed successfully")
     except UserNotFoundException:
         raise HTTPException(status_code=404, detail="User not found or no connections")
@@ -73,9 +81,12 @@ async def push_message(payload: UserPushRequest):
         404: ("No users with this role or no connections", None)
     }, default=common_responses)
 )
-async def push_message_by_role(payload: RolePushRequest):
+async def push_message_by_role(
+    payload: RolePushRequest,
+    ws_manager: Annotated[ConnectionManager, Depends(get_manager)]
+):
     try:
-        count = await push_message_to_role(payload.role, payload.type, payload.data)
+        count = await push_message_to_role(payload.role, payload.type, payload.data, ws_manager)
         if count == 0:
             raise HTTPException(status_code=404, detail="No users with this role or no connections")
         return APIResponse(code=200, message=f"Message pushed successfully, pushed {count} connections")

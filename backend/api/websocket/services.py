@@ -1,11 +1,9 @@
 import json
 from datetime import datetime
 from core.redis import get_redis
-from websocket.manager import get_manager
+from websocket.manager import ConnectionManager
 from .schema import OnlineUsersResponse, OnlineUserInfo, ConnectionInfo
 from utils.custom_exception import ServerException, UserNotFoundException, RoleNotFoundException
-
-ws_manager = get_manager()
 
 async def fetch_online_users() -> OnlineUsersResponse:
     try:
@@ -45,14 +43,14 @@ async def fetch_online_users() -> OnlineUsersResponse:
     except Exception as e:
         raise ServerException(f"Fetch online users failed: {str(e)}")
 
-async def broadcast_message(msg_type: str, data):
+async def broadcast_message(msg_type: str, data, ws_manager: ConnectionManager):
     try:
         await ws_manager.broadcast(msg_type, data)
         return True
     except Exception as e:
         raise ServerException(f"Broadcast message failed: {str(e)}")
 
-async def push_message_to_user(user_id: str, msg_type: str, data):
+async def push_message_to_user(user_id: str, msg_type: str, data, ws_manager: ConnectionManager):
     try:
         is_pushed = await ws_manager.push_message_to_user(user_id, msg_type, data)
         if not is_pushed:
@@ -63,7 +61,7 @@ async def push_message_to_user(user_id: str, msg_type: str, data):
     except Exception as e:
         raise ServerException(f"Push message to user {user_id} failed: {str(e)}")
 
-async def push_message_to_role(role: str, msg_type: str, data):
+async def push_message_to_role(role: str, msg_type: str, data, ws_manager: ConnectionManager):
     try:
         count = await ws_manager.push_message_to_role(role, msg_type, data)
         return count

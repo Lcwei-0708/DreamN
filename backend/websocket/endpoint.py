@@ -1,18 +1,21 @@
 import json
 import logging
-from .manager import get_manager
+from typing import Annotated
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status, Depends
 from core.redis import get_redis
 from extensions.keycloak import get_keycloak
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from .manager import get_manager, ConnectionManager
 
 router = APIRouter()
-ws_manager = get_manager()
 logger = logging.getLogger(__name__)
 
 REDIS_ONLINE_USERS_KEY = "ws:online_users"
 
 @router.websocket("/")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    ws_manager: Annotated[ConnectionManager, Depends(get_manager)]
+):
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
@@ -52,6 +55,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             logger.info(f"Received from {userinfo.get('sub', 'unknown user')}: {data}")
-            await ws_manager.broadcast(f"{userinfo.get('sub', 'unknown user')} says: {data}")
+            await ws_manager.broadcast("message", f"{userinfo.get('sub', 'unknown user')} says: {data}")
     except WebSocketDisconnect:
         await ws_manager.disconnect(sid)

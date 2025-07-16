@@ -13,20 +13,9 @@ from utils.get_real_ip import get_real_ip_websocket
 from utils.custom_exception import RoleNotFoundException, UserNotFoundException
 
 class ConnectionManager:
-    _instances = {}
-    
-    def __new__(cls):
-        pid = os.getpid()
-        if pid not in cls._instances:
-            cls._instances[pid] = super(ConnectionManager, cls).__new__(cls)
-            cls._instances[pid]._initialized = False
-        return cls._instances[pid]
-    
     def __init__(self):
-        if not hasattr(self, '_initialized') or not self._initialized:
-            self.active_connections = {}
-            self._redis_reset = False
-            self._initialized = True
+        self.active_connections = {}
+        self._redis_reset = False
 
     async def reset_redis_connections(self):
         """
@@ -274,5 +263,14 @@ class ConnectionManager:
         else:
             return False, last_disconnect_time
 
+# 全局實例（用於依賴注入）
+_manager_instance = None
+
 def get_manager() -> ConnectionManager:
-    return ConnectionManager()
+    """
+    獲取 ConnectionManager 實例的依賴函數
+    """
+    global _manager_instance
+    if _manager_instance is None:
+        _manager_instance = ConnectionManager()
+    return _manager_instance
