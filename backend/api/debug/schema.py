@@ -6,8 +6,6 @@ class IPDebugResponse(BaseModel):
     x_forwarded_for: Optional[str] = Field(None, description="X-Forwarded-For Header")
     x_real_ip: Optional[str] = Field(None, description="X-Real-IP Header")
     detected_real_ip: Optional[str] = Field(None, description="經 middleware 處理後的真實 IP")
-    middleware_processed: bool = Field(..., description="middleware 是否有處理過")
-    note: str = Field(..., description="備註/說明")
 
 class ClearBlockedIPsResponse(BaseModel):
     cleared_ips: List[str] = Field(..., description="被清除封鎖的 IP 列表")
