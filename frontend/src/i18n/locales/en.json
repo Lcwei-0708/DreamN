@@ -2,5 +2,58 @@
   "Home": {
     "title": "DreamN",
     "description": "DreamN is a full-stack web development boilerplate based on <bold>Docker</bold>, <bold>React</bold>, <bold>FastAPI</bold>, <bold>MariaDB</bold>, and <bold>Nginx</bold>."
+  },
+  "common": {
+    "copy": "Copy",
+    "copied": "Copied {{text}} to clipboard",
+    "copied_failed": "Copy {{text}} failed",
+    "close": "Close",
+    "logout": "Logout",
+    "loading": "Loading...",
+    "backHome": "Back to Home",
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "cancel": "Cancel"
+  },
+  "errors": {
+    "401": {
+      "title": "Authentication required",
+      "message": "Please login again."
+    },
+    "403": {
+      "title": "Permission Denied",
+      "message": "You don't have permission to perform this action."
+    },
+    "404": {
+      "title": "Page Not Found",
+      "message": "The page you are looking for does not exist."
+    },
+    "429": {
+      "title": "Too Many Requests",
+      "message": "Please wait a moment and try again."
+    },
+    "500": {
+      "title": "Internal Server Error",
+      "message": "Please try again later."
+    },
+    "network": {
+      "title": "Network Error",
+      "message": "Please check your connection."
+    }
+  },
+  "logout": {
+    "title": "Confirm Logout",
+    "message": "Are you sure you want to logout?"
+  },
+  "test": {
+    "userInfo": "User Info",
+    "showUserInfo": "Show User Info",
+    "copyToken": "Copy Token",
+    "webPush": "Web Push",
+    "register": "Register Notifications",
+    "cancel": "Cancel Notifications",
+    "subscribed": "Subscribed",
+    "notSubscribed": "Not Subscribed",
+    "admin": "Admin Page"
   }
 }

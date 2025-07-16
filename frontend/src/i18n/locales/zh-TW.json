@@ -2,5 +2,57 @@
   "Home": {
     "title": "DreamN",
     "description": "DreamN 是一個基於 <bold>Docker</bold>、<bold>React</bold>、<bold>FastAPI</bold>、<bold>MariaDB</bold> 和 <bold>Nginx</bold> 的全端網頁開發模板。"
+  },
+  "common": {
+    "copy": "複製",
+    "copied": "已複製{{text}}到剪貼簿",
+    "copied_failed": "複製{{text}}失敗",
+    "close": "關閉",
+    "logout": "登出",
+    "loading": "載入中...",
+    "backHome": "回首頁",
+    "retry": "重試",
+    "confirm": "確認",
+    "cancel": "取消"
+  },
+  "errors": {
+    "401": {
+      "title": "需要驗證",
+      "message": "請重新登入。"
+    },
+    "403": {
+      "title": "權限不足",
+      "message": "您沒有權限進行此操作。"
+    },
+    "404": {
+      "title": "找不到頁面",
+      "message": "您要找的頁面不存在。"
+    },
+    "429": {
+      "title": "請求太多次",
+      "message": "請稍後再試。"
+    },
+    "500": {
+      "title": "伺服器錯誤",
+      "message": "請稍後再試。"
+    },
+    "network": {
+      "title": "網路錯誤",
+      "message": "請檢查您的網路連線。"
+    }
+  },
+  "logout": {
+    "title": "確認登出",
+    "message": "您確定要登出嗎？"
+  },
+  "test": {
+    "userInfo": "使用者資訊",
+    "showUserInfo": "顯示使用者資訊",
+    "copyToken": "複製 Token",
+    "webPush": "Web Push 通知",
+    "register": "註冊通知",
+    "cancel": "取消通知",
+    "subscribed": "已訂閱",
+    "notSubscribed": "尚未訂閱"
   }
 }

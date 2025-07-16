@@ -51,6 +51,13 @@ services:
       - SITE_URL=${SITE_URL}
       # API settings
       - VITE_API_BASE_URL=https://${HOSTNAME}:${BACKEND_PORT}/api
+      - VITE_WEBSOCKET_URL=wss://${HOSTNAME}:${BACKEND_PORT}/ws/
+      # Keycloak settings
+      - VITE_KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL}
+      - VITE_KEYCLOAK_REALM=${KEYCLOAK_REALM}
+      - VITE_KEYCLOAK_CLIENT=${KEYCLOAK_CLIENT}
+      # Web push settings
+      - VITE_VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
     user: root
     command: ["sh", "./init-prod.sh"]
     depends_on:
@@ -85,7 +92,7 @@ services:
       - DB_READ_TIMEOUT=${DB_READ_TIMEOUT}
       - DB_WRITE_TIMEOUT=${DB_WRITE_TIMEOUT}
       # Redis settings
-      - REDIS_URL=redis://${REDIS_PASSWORD}@redis
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
       # Keycloak settings
       - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL}
       - KEYCLOAK_REALM=${KEYCLOAK_REALM}

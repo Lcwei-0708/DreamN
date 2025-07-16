@@ -2,23 +2,48 @@ import nginxLogo from "@/assets/nginx.svg";
 import reactLogo from "@/assets/react.svg";
 import fastapiLogo from "@/assets/fastapi.svg";
 import mariadbLogo from "@/assets/mariadb.svg";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useTranslation, Trans } from "react-i18next";
-import { useTheme } from "@/contexts/themeContext";
-import { Sun, Moon } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import i18n from "@/i18n";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { userService } from '@/services/user.service';
+import { useTranslation, Trans } from "react-i18next";
+import { useKeycloak } from "@/contexts/keycloakContext";
 
 function Home() {
-  const { t, i18n: i18nInstance } = useTranslation();
-  const { isDark, toggleTheme } = useTheme();
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { authenticated, getToken, hasModulePermission } = useKeycloak();
+  const [apiLoading, setApiLoading] = useState(false);
+  const [userInfo, setUserInfo] = useState(null);
 
-  const language = i18nInstance.language;
+  const handleGetUserInfo = async () => {
+    try {
+      setApiLoading(true);
+      const data = await userService.getInfo();
+      setUserInfo(data);
+      window.showDataToast(data, t("test.userInfo"));
+    } catch (error) {
+      toast.error('Failed to get user info: ' + (error?.message || error));
+    } finally {
+      setApiLoading(false);
+    }
+  };
 
-  const changeLanguage = (lng) => {
-    i18n.changeLanguage(lng);
-    localStorage.setItem("app-language", lng);
+  const handleCopyToken = async () => {
+    try {
+      const token = getToken();
+      if (!token) {
+        toast.error('Cannot get token');
+        return;
+      }
+      await navigator.clipboard.writeText(token);
+      toast.success(t("common.copied", { text: "token" }));
+    } catch (error) {
+      console.error('Copy token failed:', error);
+      toast.error(t("common.copied_failed"));
+    }
   };
 
   const logoClass = cn(
@@ -34,49 +59,9 @@ function Home() {
     <>
       <div
         className={cn(
-          "min-h-screen flex flex-col items-center justify-center p-4 relative",
-          "bg-background text-foreground"
+          "min-h-screen flex flex-col items-center justify-center p-4 relative"
         )}
       >
-        <div className="absolute top-4 right-4 flex items-center gap-2">
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={toggleTheme}
-            className="rounded-full size-10"
-          >
-            {isDark ? (
-              <Sun className="size-5" />
-            ) : (
-              <Moon className="size-5" />
-            )}
-          </Button>
-        </div>
-
-        <div className="absolute top-4 left-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="px-4">
-                {language === "en" ? "English" : "繁體中文"}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="gap-1 flex flex-col">
-              <DropdownMenuItem
-                onClick={() => changeLanguage("en")}
-                className={language === "en" ? "font-bold bg-accent" : ""}
-              >
-                English
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => changeLanguage("zh-TW")}
-                className={language === "zh-TW" ? "font-bold bg-accent" : ""}
-              >
-                繁體中文
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
         <h1
           className={cn(
             "text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-7 text-center",
@@ -146,6 +131,34 @@ function Home() {
             )}
           />
         </div>
+
+        {/* User Info Buttons */}
+        {authenticated && (
+          <div className="mb-8 flex justify-center gap-4">
+            <Button
+              variant="outline"
+              onClick={handleGetUserInfo}
+            >
+              {t("test.showUserInfo")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleCopyToken}
+              className="flex items-center gap-2"
+            >
+              {t("test.copyToken")}
+            </Button>
+          </div>
+        )}
+
+        {hasModulePermission && hasModulePermission("admin") && (
+          <Button
+            variant="outline"
+            onClick={() => navigate("/admin")}
+          >
+            {t("test.admin")}
+          </Button>
+        )}
       </div>
     </>
   );
