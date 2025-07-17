@@ -56,7 +56,7 @@ class RoleInfo(BaseModel):
     id: str = Field(..., description="角色 ID")
     role_name: str = Field(..., description="角色名稱")
     description: Optional[str] = Field(None, description="角色描述")
-    attributes: Optional[Dict[str, List[str]]] = Field(None, description="角色屬性")
+    attributes: Optional[Dict[str, bool]] = Field(None, description="角色屬性")
 
 class RoleList(BaseModel):
     roles: List[RoleInfo] = Field(..., description="角色列表")
@@ -72,4 +72,4 @@ class UpdateRoleRequest(BaseModel):
     description: Optional[str] = Field(None, max_length=200, description="角色描述")
 
 class RoleAttributesUpdateRequest(BaseModel):
-    attributes: Dict[str, List[str]] = Field(..., description="角色屬性", example={"key_1": ["value_1"]})
+    attributes: Dict[str, bool] = Field(..., description="角色屬性", example={"admin": True})

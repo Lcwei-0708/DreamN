@@ -237,7 +237,7 @@ async def get_all_roles() -> RoleList:
                 id=role["id"],
                 role_name=role["name"],
                 description=role.get("description"),
-                attributes=full_role.get("attributes") if full_role.get("attributes") else None
+                attributes=keycloak.parse_attributes(full_role.get("attributes"))
             )
             role_list.append(role_info)
         return RoleList(roles=role_list)
@@ -275,16 +275,12 @@ async def update_role(role_name: str, role_data: UpdateRoleRequest) -> None:
 async def update_role_attributes(role_name: str, attributes: dict) -> None:
     """Update role attributes only - merge with existing attributes"""
     try:
-        existing_role = await keycloak_admin.a_get_realm_role(role_name)
-        
-        # 獲取現有的屬性，如果沒有則建立空字典
+        existing_role = await keycloak_admin.a_get_realm_role(role_name)        
         existing_attributes = existing_role.get("attributes", {})
         
-        # 合併現有屬性與新屬性（新屬性會覆蓋同名的現有屬性）
         merged_attributes = existing_attributes.copy()
-        merged_attributes.update(attributes)
+        merged_attributes.update(keycloak.format_attributes(attributes))
         
-        # 建立完整的更新負載
         update_payload = {
             "name": role_name,
             "description": existing_role.get("description", ""),

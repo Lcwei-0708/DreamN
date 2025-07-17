@@ -50,7 +50,7 @@ class KeycloakExtension:
                     role_name = role["name"]
                     role_info = await self.keycloak_admin.a_get_realm_role(role_name)
                     attributes = role_info.get("attributes", {})
-                    if attributes.get(module_name, ["false"])[0].lower() == "true":
+                    if attributes.get(module_name, False):
                         return await func(*args, **kwargs)
 
                 logger.info(f"Permission denied for user {user_id} on module {module_name}. Checked roles: {[r['name'] for r in user_roles]}")
@@ -87,6 +87,34 @@ class KeycloakExtension:
         if role_name in default_roles:
             return False
         return True
+
+    def parse_attributes(self, attributes: dict) -> dict:
+        """
+        Convert {"admin": ["true"], "other": ["false"]} to {"admin": True, "other": False}
+        """
+        result = {}
+        for k, v in (attributes or {}).items():
+            if isinstance(v, list) and v:
+                val = v[0]
+            else:
+                val = v
+            if isinstance(val, str) and val.lower() in ("true", "false"):
+                result[k] = val.lower() == "true"
+            else:
+                result[k] = val
+        return result
+
+    def format_attributes(self, attributes: dict) -> dict:
+        """
+        Convert {"admin": True, "other": False} to {"admin": ["true"], "other": ["false"]}
+        """
+        result = {}
+        for k, v in (attributes or {}).items():
+            if isinstance(v, bool):
+                result[k] = [str(v).lower()]
+            else:
+                result[k] = [str(v)]
+        return result
 
 _KEYCLOAK_EXTENSION: Optional[KeycloakExtension] = None
 

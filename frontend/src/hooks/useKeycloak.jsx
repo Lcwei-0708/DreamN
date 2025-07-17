@@ -364,7 +364,8 @@ export const useKeycloak = () => {
             type: 'INITIALIZED',
             keycloak: keycloakInstance,
             authenticated
-          });
+          });          
+          debugLog('Keycloak initialized', keycloakInstance);
           
           return { keycloakInstance, authenticated };
           
@@ -387,7 +388,7 @@ export const useKeycloak = () => {
     const { keycloakInstance, authenticated } = await keycloakInitPromise;
 
     if (isMountedRef.current) {
-      setKeycloak(keycloakInstance);
+      setKeycloak(keycloakInstance);      
       setAuthenticated(authenticated);
 
       if (authenticated) {
