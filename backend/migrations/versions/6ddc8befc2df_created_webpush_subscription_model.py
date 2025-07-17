@@ -1,8 +1,8 @@
 """Created webpush subscription model
 
-Revision ID: 3d805d050e06
-Revises: 52254da1da1c
-Create Date: 2025-07-14 09:34:20.211545
+Revision ID: 6ddc8befc2df
+Revises: f5e32ce62c76
+Create Date: 2025-07-17 18:12:10.838806
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '3d805d050e06'
-down_revision: Union[str, None] = '52254da1da1c'
+revision: str = '6ddc8befc2df'
+down_revision: Union[str, None] = 'f5e32ce62c76'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
