@@ -2,9 +2,10 @@ import nginxLogo from "@/assets/nginx.svg";
 import reactLogo from "@/assets/react.svg";
 import fastapiLogo from "@/assets/fastapi.svg";
 import mariadbLogo from "@/assets/mariadb.svg";
+import dockerLogo from "@/assets/docker.svg";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { userService } from '@/services/user.service';
@@ -17,6 +18,37 @@ function Home() {
   const { authenticated, getToken, hasModulePermission } = useKeycloak();
   const [apiLoading, setApiLoading] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
+  const [hoverLogo, setHoverLogo] = useState(null);
+
+  // 直接定義 title 字串
+  const title = "DreamN";
+
+  // logo 與高亮字母的 mapping
+  const logoHighlightMap = {
+    docker: "D",
+    react: "re",
+    fastapi: "a",
+    mariadb: "m",
+    nginx: "N",
+  };
+
+  // 產生高亮資訊
+  const highlightedTitle = useMemo(() => {
+    if (!hoverLogo || !logoHighlightMap[hoverLogo]) return title;
+
+    const highlight = logoHighlightMap[hoverLogo];
+    const idx = title.indexOf(highlight);
+
+    if (idx === -1) return title;
+
+    return (
+      <>
+        {title.slice(0, idx)}
+        <span className="text-destructive font-extrabold">{highlight}</span>
+        {title.slice(idx + highlight.length)}
+      </>
+    );
+  }, [hoverLogo, title]);
 
   const handleGetUserInfo = async () => {
     try {
@@ -51,7 +83,7 @@ function Home() {
     "sm:w-20 sm:h-20",
     "md:w-24 md:h-24",
     "lg:w-28 lg:h-28",
-    "transition-all duration-300",
+    "transition-all duration-100",
     "user-select-none"
   );
 
@@ -68,7 +100,7 @@ function Home() {
             "text-foreground"
           )}
         >
-          {t("Home.title")}
+          {highlightedTitle}
         </h1>
 
         <p
@@ -88,20 +120,22 @@ function Home() {
         <div
           className={cn(
             "grid gap-8 mb-12",
-            "grid-cols-2", // Mobile: 2 items per row
-            "sm:grid-cols-4", // Small tablet and above: 4 items per row
-            "md:gap-12", // Larger gap on tablet
-            "lg:gap-16" // Even larger gap on laptop/desktop
+            "grid-cols-2",
+            "sm:grid-cols-5",
+            "md:gap-12",
+            "lg:gap-16"
           )}
         >
           <img
-            src={nginxLogo}
-            alt="Nginx"
-            title="Nginx"
+            src={dockerLogo}
+            alt="Docker"
+            title="Docker"
             className={cn(
               logoClass,
-              "hover:drop-shadow-[0_8px_32px_rgba(1,150,57,0.85)]"
+              "hover:drop-shadow-[0_0_30px_rgba(2,136,209,0.85)]"
             )}
+            onMouseEnter={() => setHoverLogo("docker")}
+            onMouseLeave={() => setHoverLogo(null)}
           />
           <img
             src={reactLogo}
@@ -111,6 +145,8 @@ function Home() {
               logoClass,
               "hover:drop-shadow-[0_8px_32px_rgba(97,218,251,0.95)]"
             )}
+            onMouseEnter={() => setHoverLogo("react")}
+            onMouseLeave={() => setHoverLogo(null)}
           />
           <img
             src={fastapiLogo}
@@ -120,6 +156,8 @@ function Home() {
               logoClass,
               "hover:drop-shadow-[0_12px_32px_rgba(0,150,136,0.85)]"
             )}
+            onMouseEnter={() => setHoverLogo("fastapi")}
+            onMouseLeave={() => setHoverLogo(null)}
           />
           <img
             src={mariadbLogo}
@@ -129,6 +167,19 @@ function Home() {
               logoClass,
               "hover:drop-shadow-[0_12px_32px_rgba(221,114,0,1)]"
             )}
+            onMouseEnter={() => setHoverLogo("mariadb")}
+            onMouseLeave={() => setHoverLogo(null)}
+          />
+          <img
+            src={nginxLogo}
+            alt="Nginx"
+            title="Nginx"
+            className={cn(
+              logoClass,
+              "hover:drop-shadow-[0_8px_32px_rgba(1,150,57,0.85)]"
+            )}
+            onMouseEnter={() => setHoverLogo("nginx")}
+            onMouseLeave={() => setHoverLogo(null)}
           />
         </div>
 
