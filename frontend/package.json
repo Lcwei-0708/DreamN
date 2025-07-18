@@ -42,6 +42,7 @@
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
     "postcss": "^8.5.4",
+    "sass-embedded": "^1.89.2",
     "sitemap": "^8.0.0",
     "tailwindcss": "^4.1.8",
     "tw-animate-css": "^1.3.4",
