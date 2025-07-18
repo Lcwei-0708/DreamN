@@ -23,21 +23,58 @@
 
 ## How to Use
 
-1. **Clone the repository**
+#### 1. **Clone the repository**
 
    ```bash
    git clone ssh://git@172.16.0.206:2224/it/DreamN.git
    ```
 
 
-2. **Move to project**
+#### 2. **Move to project**
 
    ```bash
    cd DreamN
    ```
 
 
-3. **Set up Keycloak Authentication**
+#### 3. **Configure environment variables**
+
+   Copy `.env.example` to `.env` and edit as needed:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Edit the `.env` file and configure the following settings:
+
+   - **Keycloak Authentication Settings**
+   
+      Set the following parameters based on [step 4](#4-set-up-keycloak-authentication):
+      
+      ```bash
+      KEYCLOAK_SERVER_URL=keycloakServerURL
+      KEYCLOAK_REALM=keycloakRealm
+      KEYCLOAK_CLIENT=keycloakClient
+      KEYCLOAK_ADMIN_CLIENT=keycloakAdminClient
+      KEYCLOAK_ADMIN_CLIENT_SECRET=keycloakAdminClientSecret
+      ```
+
+   - **Web Push Settings**
+   
+      Set the following parameters using the VAPID keys you generated in [step 5](#5-generate-vapid-keys-for-web-push-notifications):
+      
+      ```bash
+      VAPID_PRIVATE_KEY=VAPIDPrivateKey
+      VAPID_PUBLIC_KEY=VAPIDPublicKey
+      VAPID_EMAIL=VAPIDPEmail
+      ```
+
+   - **Development and Production Modes**
+
+      Set the `COMPOSE_FILE` environment variable to switch between development and production modes.
+
+
+#### 4. **Set up Keycloak Authentication**
 
    Configure your Keycloak instance and obtain the required configuration values:
 
@@ -52,7 +89,7 @@
    - **`KEYCLOAK_ADMIN_CLIENT_SECRET`** : Navigate to Admin Client → Credentials tab to find the Secret value
 
 
-4. **Generate VAPID keys for Web Push notifications**
+#### 5. **Generate VAPID keys for Web Push notifications**
 
    Install web-push globally and generate VAPID keys:
 
@@ -64,47 +101,8 @@
    web-push generate-vapid-keys
    ```
 
-   Save the generated keys for use in the next step.
 
-
-5. **Configure environment variables**
-
-   Copy `.env.example` to `.env` and edit as needed:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit the `.env` file and configure the following settings:
-
-   - **Keycloak Authentication Settings**
-   
-      Use the values obtained from `step 3`:
-      
-      ```bash
-      KEYCLOAK_SERVER_URL=keycloakServerURL
-      KEYCLOAK_REALM=keycloakRealm
-      KEYCLOAK_CLIENT=keycloakClient
-      KEYCLOAK_ADMIN_CLIENT=keycloakAdminClient
-      KEYCLOAK_ADMIN_CLIENT_SECRET=keycloakAdminClientSecret
-      ```
-
-   - **Web Push Settings**
-   
-      Replace with your generated VAPID keys from `step 4`:
-      
-      ```bash
-      # Web push
-      VAPID_PRIVATE_KEY=VAPIDPrivateKey
-      VAPID_PUBLIC_KEY=VAPIDPublicKey
-      VAPID_EMAIL=VAPIDPEmail
-      ```
-
-   - **Development and Production Modes**
-      Set the `COMPOSE_FILE` environment variable to switch between development and production modes.
-
-
-6. **Set up Nginx SSL certificates and IP whitelist**
+#### 6. **Set up Nginx SSL certificates and IP whitelist**
 
    - Place your SSL certificates in the `nginx/ssl` directory
    - Copy `whitelist.conf.example` to `whitelist.conf` and edit as needed.
@@ -116,7 +114,7 @@
    > See [Nginx Docs](./nginx/README.md) for more details.
 
 
-7. **Start the services**
+#### 7. **Start the services**
 
    First run or after code changes:
 
@@ -131,7 +129,7 @@
    ```
 
 
-8. **Stop the services**
+#### 8. **Stop the services**
 
    ```bash
    docker compose down
