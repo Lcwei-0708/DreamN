@@ -23,7 +23,7 @@ async def get_user_info(request: Request, token: str = Depends(verify_token), db
         data = await get_current_user_info(token, db)
         return APIResponse(code=200, message="User info retrieved successfully", data=data)
     except Exception:
-        raise HTTPException(status_code=500, detail="Failed to get user info")
+        raise HTTPException(status_code=500)
 
 @router.put(
     "/update",
