@@ -44,3 +44,6 @@ python-keycloak
 
 # Web push
 pywebpush
+
+# Modbus
+pymodbus

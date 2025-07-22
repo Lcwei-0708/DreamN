@@ -4,6 +4,7 @@ from .user.controller import router as user_router
 from .admin.controller import router as admin_router
 from .websocket.controller import router as websocket_router
 from .webpush.controller import router as webpush_router
+from .modbus.controller import router as modbus_router
 
 api_router = APIRouter()
 
@@ -16,3 +17,4 @@ api_router.include_router(user_router, prefix="/user")
 api_router.include_router(admin_router, prefix="/admin")
 api_router.include_router(websocket_router, prefix="/websocket")
 api_router.include_router(webpush_router, prefix="/webpush")
+api_router.include_router(modbus_router, prefix="/modbus")

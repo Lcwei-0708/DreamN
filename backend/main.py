@@ -2,6 +2,7 @@ from api import api_router
 from fastapi import FastAPI
 from core.database import init_db
 from websocket import websocket_router
+from extensions.modbus import get_modbus
 from fastapi_limiter import FastAPILimiter
 from contextlib import asynccontextmanager
 from extensions import register_extensions
@@ -20,6 +21,10 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     await init_redis()
     await FastAPILimiter.init(get_redis())
+    
+    # Initialize Modbus connections
+    await get_modbus().initialize_from_database()
+    
     yield
     scheduler.shutdown()
 
