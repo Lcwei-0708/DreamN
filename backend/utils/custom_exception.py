@@ -139,3 +139,15 @@ class ModbusConfigFormatMismatchException(BaseServiceException):
     def __init__(self, message: str = None, details: Dict[str, Any] = None):
         message = f"{message}" if message else "Configuration format does not match the expected format"
         super().__init__(message, "MODBUS_CONFIG_FORMAT_MISMATCH", details, status_code=422, log_level="warning")
+
+class ModbusControllerDuplicateException(BaseServiceException):
+    """Modbus controller with same host and port already exists"""
+    def __init__(self, message: str = None, details: Dict[str, Any] = None):
+        message = f"{message}" if message else "Controller with same host and port already exists"
+        super().__init__(message, "MODBUS_CONTROLLER_DUPLICATE", details, status_code=409, log_level="warning")
+
+class ModbusPointDuplicateException(BaseServiceException):
+    """Modbus point with same unit_id, address, and type already exists"""
+    def __init__(self, message: str = None, details: Dict[str, Any] = None):
+        message = f"{message}" if message else "Point with same unit_id, address, and type already exists"
+        super().__init__(message, "MODBUS_POINT_DUPLICATE", details, status_code=409, log_level="warning")

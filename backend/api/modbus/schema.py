@@ -1,4 +1,4 @@
-from typing import Optional, List, Literal, Union, Dict, Any
+from typing import Optional, List, Union, Dict, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -33,6 +33,9 @@ class ModbusControllerResponse(BaseModel):
     status: bool = Field(..., description="控制器狀態")
     created_at: str = Field(..., description="建立時間")
     updated_at: str = Field(..., description="更新時間")
+    
+    class Config:
+        from_attributes = True
 
 class ModbusControllerListResponse(BaseModel):
     total: int = Field(..., description="總數量")
@@ -53,7 +56,7 @@ class ModbusPointCreateRequest(BaseModel):
 
 class ModbusPointBatchCreateRequest(BaseModel):
     controller_id: str = Field(..., description="控制器 ID")
-    points: List[ModbusPointCreateRequest] = Field(..., description="點位列表")
+    points: List[ModbusPointCreateRequest] = Field(..., description="List of points to create")
 
 class ModbusPointUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, description="點位名稱")
@@ -84,14 +87,20 @@ class ModbusPointResponse(BaseModel):
     max_value: Optional[float] = Field(None, description="最大值")
     created_at: str = Field(..., description="建立時間")
     updated_at: str = Field(..., description="更新時間")
+    
+    class Config:
+        from_attributes = True
 
 class ModbusPointListResponse(BaseModel):
     total: int = Field(..., description="總數量")
     points: List[ModbusPointResponse] = Field(..., description="點位列表")
 
 class ModbusPointBatchCreateResponse(BaseModel):
-    total: int = Field(..., description="總建立數量")
-    points: List[ModbusPointResponse] = Field(..., description="已建立點位列表")
+    created_points: List[ModbusPointResponse] = Field(..., description="成功建立的點位列表")
+    skipped_points: List[Dict[str, Any]] = Field(..., description="被跳過的點位列表")
+    total_requested: int = Field(..., description="請求的總點位數")
+    created_count: int = Field(..., description="成功建立的點位數")
+    skipped_count: int = Field(..., description="被跳過的點位數")
 
 class ModbusPointDataResponse(BaseModel):
     point_id: str = Field(..., description="點位 ID")
@@ -110,6 +119,7 @@ class ModbusPointDataResponse(BaseModel):
     max_value: Optional[float] = Field(None, description="最大值")
 
 class ModbusPointValueResponse(BaseModel):
+    point_id: str = Field(..., description="點位 ID")
     name: str = Field(..., description="點位名稱")
     value: Union[bool, int, float, List, None] = Field(..., description="最終數值")
 
@@ -132,16 +142,47 @@ class ModbusPointWriteResponse(BaseModel):
     write_time: str = Field(..., description="寫入時間")
     success: bool = Field(..., description="寫入是否成功")
 
+class ModbusControllerValidationInfo(BaseModel):
+    controller_name: str = Field(..., description="控制器名稱")
+    points_count: int = Field(..., description="該控制器的點位數量")
+
 class ModbusConfigValidationResponse(BaseModel):
     is_valid: bool = Field(..., description="是否有效")
     errors: List[str] = Field(..., description="錯誤訊息列表")
     warnings: List[str] = Field(..., description="警告訊息列表")
+    controllers_found: List[ModbusControllerValidationInfo] = Field(..., description="找到的控制器資訊")
+    total_controllers: int = Field(..., description="總控制器數量")
+    total_points: int = Field(..., description="總點位數")
+
+class ModbusControllerImportInfo(BaseModel):
+    controller_id: str = Field(..., description="控制器 ID")
+    controller_name: str = Field(..., description="控制器名稱")
+    points_count: int = Field(..., description="該控制器的點位數量")
+
+class ModbusControllerSkipInfo(BaseModel):
+    controller_name: str = Field(..., description="控制器名稱")
+    host: str = Field(..., description="主機地址")
+    port: int = Field(..., description="端口")
+    reason: str = Field(..., description="跳過原因")
 
 class ModbusConfigImportResponse(BaseModel):
-    imported_controllers: List[str] = Field(..., description="已匯入的控制器 ID 列表")
+    imported_controllers: List[ModbusControllerImportInfo] = Field(..., description="已匯入的控制器詳細資訊")
+    skipped_controllers: List[ModbusControllerSkipInfo] = Field(..., description="被跳過的控制器詳細資訊")
+    total_requested: int = Field(..., description="請求的總控制器數")
+    imported_count: int = Field(..., description="成功匯入的控制器數")
+    skipped_count: int = Field(..., description="被跳過的控制器數")
     total_points: int = Field(..., description="總點位數")
     import_time: str = Field(..., description="匯入時間")
 
+class ModbusConfigExportRequest(BaseModel):
+    controller_ids: Optional[List[str]] = Field(None, description="要匯出的控制器 ID 列表（空值 = 匯出全部）")
+    format: ConfigFormat = Field(ConfigFormat.native, description="匯出格式")
+
+class ModbusConfigImportRequest(BaseModel):
+    format: ConfigFormat = Field(ConfigFormat.native, description="匯入格式")
+    overwrite: bool = Field(False, description="是否覆蓋現有的 point")
+
+# Response examples
 modbus_controller_response_example = {
     "code": 200,
     "message": "Controller created successfully",
@@ -253,6 +294,61 @@ modbus_point_list_response_example = {
     }
 }
 
+modbus_point_batch_create_response_example = {
+    "code": 200,
+    "message": "Successfully created 2 points, skipped 1 duplicate points",
+    "data": {
+        "created_points": [
+            {
+                "id": "uuid-point-id-1",
+                "controller_id": "uuid-controller-id",
+                "name": "Temperature 1",
+                "description": "Boiler temperature sensor",
+                "type": "holding_register",
+                "data_type": "uint16",
+                "address": 40001,
+                "len": 1,
+                "unit_id": 1,
+                "formula": "x * 0.1",
+                "unit": "°C",
+                "min_value": 0.0,
+                "max_value": 100.0,
+                "created_at": "2024-01-01T10:00:00+00:00",
+                "updated_at": "2024-01-01T10:00:00+00:00"
+            },
+            {
+                "id": "uuid-point-id-2",
+                "controller_id": "uuid-controller-id",
+                "name": "Pressure 1",
+                "description": "System pressure",
+                "type": "input_register",
+                "data_type": "uint16",
+                "address": 30001,
+                "len": 1,
+                "unit_id": 1,
+                "formula": None,
+                "unit": "bar",
+                "min_value": 0.0,
+                "max_value": 10.0,
+                "created_at": "2024-01-01T10:05:00+00:00",
+                "updated_at": "2024-01-01T10:05:00+00:00"
+            }
+        ],
+        "skipped_points": [
+            {
+                "name": "Temperature 1",
+                "address": 40001,
+                "type": "holding_register",
+                "unit_id": 1,
+                "reason": "Point already exists"
+            }
+        ],
+        "total_requested": 3,
+        "created_count": 2,
+        "skipped_count": 1
+    }
+}
+
 modbus_multi_point_data_response_example = {
     "code": 200,
     "message": "Controller values read successfully",
@@ -262,10 +358,12 @@ modbus_multi_point_data_response_example = {
         "failed": 0,
         "values": [
             {
+                "point_id": "uuid-point-id-1",
                 "name": "Temperature 1",
                 "value": 205.0
             },
             {
+                "point_id": "uuid-point-id-2",
                 "name": "Pressure 1",
                 "value": 150
             }
@@ -289,9 +387,31 @@ modbus_point_write_response_example = {
 
 modbus_config_import_response_example = {
     "code": 200,
-    "message": "Configuration imported successfully",
+    "message": "Successfully imported 2 controllers, skipped 1 duplicate controller",
     "data": {
-        "imported_controllers": ["uuid-controller-id-1", "uuid-controller-id-2"],
+        "imported_controllers": [
+            {
+                "controller_id": "uuid-controller-id-1",
+                "controller_name": "Test Controller 1",
+                "points_count": 8
+            },
+            {
+                "controller_id": "uuid-controller-id-2", 
+                "controller_name": "Test Controller 2",
+                "points_count": 7
+            }
+        ],
+        "skipped_controllers": [
+            {
+                "controller_name": "Test Controller 3",
+                "host": "192.168.1.103",
+                "port": 502,
+                "reason": "Controller already exists"
+            }
+        ],
+        "total_requested": 3,
+        "imported_count": 2,
+        "skipped_count": 1,
         "total_points": 15,
         "import_time": "2024-01-01T10:00:00+00:00"
     }
@@ -303,6 +423,18 @@ modbus_config_validation_response_example = {
     "data": {
         "is_valid": True,
         "errors": [],
-        "warnings": ["Some optional fields are missing"]
+        "warnings": ["Some optional fields are missing"],
+        "controllers_found": [
+            {
+                "controller_name": "Boiler Controller",
+                "points_count": 12
+            },
+            {
+                "controller_name": "Pump Controller",
+                "points_count": 8
+            }
+        ],
+        "total_controllers": 2,
+        "total_points": 20
     }
 }

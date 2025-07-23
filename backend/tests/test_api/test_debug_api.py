@@ -1,6 +1,6 @@
 import pytest
 from fastapi import Request
-from middleware.real_ip import get_real_ip
+from utils.get_real_ip import get_real_ip
 from unittest.mock import Mock, AsyncMock, patch
 from starlette.datastructures import Address, Headers
 
@@ -129,7 +129,6 @@ class TestClearBlockedIPs:
         # Mock aioredis.from_url to return a coroutine that resolves to mock_redis
         async def mock_from_url(*args, **kwargs):
             return mock_redis
-        
         with patch("api.debug.services.aioredis.from_url", side_effect=mock_from_url):
             result = await clear_blocked_ips()
             

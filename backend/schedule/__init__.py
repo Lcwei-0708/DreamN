@@ -50,7 +50,7 @@ def register_schedules():
     scheduler.add_job(
         modbus_schedule.retry_failed_connections,
         "interval",
-        seconds=30,
+        seconds=60,
         id="modbus_retry_failed_connections",
         replace_existing=True,
         max_instances=1
@@ -59,7 +59,7 @@ def register_schedules():
     scheduler.add_job(
         modbus_schedule.health_check_connections,
         "interval",
-        seconds=30,
+        seconds=60,
         id="modbus_health_check_connections",
         replace_existing=True,
         max_instances=1

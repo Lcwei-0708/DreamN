@@ -2,7 +2,7 @@ import logging
 import json
 import tempfile
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 from datetime import datetime
 from extensions.modbus import ModbusManager
 from models.modbus_point import ModbusPoint
@@ -16,13 +16,15 @@ from .schema import (
     ModbusPointDataResponse, ModbusPointValueResponse, ModbusControllerValuesResponse,
     ModbusPointWriteRequest, ModbusPointWriteResponse,
     ModbusConfigImportResponse, ModbusConfigValidationResponse,
-    ConfigFormat
+    ConfigFormat, ModbusControllerImportInfo, ModbusControllerValidationInfo,
+    ModbusConfigImportRequest, ModbusControllerSkipInfo
 )
 from utils.custom_exception import (
     ServerException, ModbusConnectionException, ModbusControllerNotFoundException,
     ModbusPointNotFoundException, ModbusReadException, ModbusValidationException, 
     ModbusWriteException, ModbusRangeValidationException, ModbusConfigException,
-    ModbusConfigFormatMismatchException
+    ModbusConfigFormatMismatchException, ModbusControllerDuplicateException,
+    ModbusPointDuplicateException
 )
 from utils.modbus_config_manager import (
     ModbusConfigManager, ConfigFormat,
@@ -34,31 +36,56 @@ logger = logging.getLogger(__name__)
 async def create_modbus_controller(request: ModbusControllerCreateRequest, db: AsyncSession, modbus: ModbusManager) -> ModbusControllerResponse:
     """Create Modbus controller (test connection first)"""
     try:
-        test_client_id = modbus.create_tcp(
-            host=request.host,
-            port=request.port,
-            timeout=request.timeout
+        # Check if controller with same host and port already exists
+        existing_controller = await db.execute(
+            select(ModbusController).where(
+                ModbusController.host == request.host,
+                ModbusController.port == request.port
+            )
         )
         
-        success = await modbus.connect(test_client_id)
+        if existing_controller.scalar_one_or_none():
+            raise ModbusControllerDuplicateException(
+                f"Controller with host {request.host} and port {request.port} already exists"
+            )
         
-        modbus.disconnect(test_client_id)
-        del modbus.clients[test_client_id]
-        
-        if not success:
-            raise ModbusConnectionException(f"Unable to connect to {request.host}:{request.port}")
-        
+        # Create controller first
         controller = ModbusController(
             name=request.name,
             host=request.host,
             port=request.port,
             timeout=request.timeout,
-            status=True
+            status=False  # Set initial status as False
         )
         
         db.add(controller)
         await db.commit()
         await db.refresh(controller)
+        
+        # Try to test connection (but don't fail if it doesn't work)
+        try:
+            test_client_id = modbus.create_tcp(
+                host=request.host,
+                port=request.port,
+                timeout=request.timeout
+            )
+            
+            success = await modbus.connect(test_client_id)
+            
+            modbus.disconnect(test_client_id)
+            del modbus.clients[test_client_id]
+            
+            # Update status based on connection test result
+            if success:
+                controller.status = True
+                await db.commit()
+                await db.refresh(controller)
+                logger.info(f"Controller {controller.name} connection test successful")
+            else:
+                logger.warning(f"Controller {controller.name} connection test failed, but controller was created")
+                
+        except Exception as e:
+            logger.warning(f"Controller {controller.name} connection test failed: {e}, but controller was created")
         
         return ModbusControllerResponse(
             id=controller.id,
@@ -70,7 +97,7 @@ async def create_modbus_controller(request: ModbusControllerCreateRequest, db: A
             created_at=controller.created_at.isoformat(),
             updated_at=controller.updated_at.isoformat()
         )
-    except ModbusConnectionException:
+    except ModbusControllerDuplicateException:
         await db.rollback()
         raise
     except Exception as e:
@@ -133,6 +160,21 @@ async def update_modbus_controller(controller_id: str, request: ModbusController
         new_port = request.port if request.port is not None else controller.port
         new_timeout = request.timeout if request.timeout is not None else controller.timeout
         
+        # Check if another controller with same host and port already exists (excluding current controller)
+        if request.host is not None or request.port is not None:
+            existing_controller = await db.execute(
+                select(ModbusController).where(
+                    ModbusController.host == new_host,
+                    ModbusController.port == new_port,
+                    ModbusController.id != controller_id
+                )
+            )
+            
+            if existing_controller.scalar_one_or_none():
+                raise ModbusControllerDuplicateException(
+                    f"Another controller with host {new_host} and port {new_port} already exists"
+                )
+        
         test_client_id = modbus.create_tcp(
             host=new_host,
             port=new_port,
@@ -184,7 +226,7 @@ async def update_modbus_controller(controller_id: str, request: ModbusController
             updated_at=updated_controller.updated_at.isoformat()
         )
         
-    except (ModbusConnectionException, ModbusControllerNotFoundException):
+    except (ModbusConnectionException, ModbusControllerNotFoundException, ModbusControllerDuplicateException):
         await db.rollback()
         raise
     except Exception as e:
@@ -257,9 +299,13 @@ async def test_modbus_controller(request: ModbusControllerCreateRequest, modbus:
         
         raise ModbusConnectionException(f"Connection test failed: {str(e)}")
 
-async def create_modbus_points_batch(request: ModbusPointBatchCreateRequest, db: AsyncSession) -> ModbusPointBatchCreateResponse:
+async def create_modbus_points_batch(
+    request: ModbusPointBatchCreateRequest, 
+    db: AsyncSession
+) -> Dict[str, Any]:
     """Create multiple Modbus points for a controller"""
     try:
+        # Verify controller exists
         controller_result = await db.execute(
             select(ModbusController).where(ModbusController.id == request.controller_id)
         )
@@ -267,31 +313,51 @@ async def create_modbus_points_batch(request: ModbusPointBatchCreateRequest, db:
             raise ModbusControllerNotFoundException(f"Controller {request.controller_id} not found")
         
         created_points = []
+        skipped_points = []
         
         for point_request in request.points:
-            point = ModbusPoint(
-                controller_id=request.controller_id,
-                name=point_request.name,
-                description=point_request.description,
-                type=point_request.type,
-                data_type=point_request.data_type,
-                address=point_request.address,
-                len=point_request.len,
-                unit_id=point_request.unit_id,
-                formula=point_request.formula,
-                unit=point_request.unit,
-                min_value=point_request.min_value,
-                max_value=point_request.max_value
+            # Check for existing point with same key fields
+            existing_point = await db.execute(
+                select(ModbusPoint).where(
+                    ModbusPoint.controller_id == request.controller_id,
+                    ModbusPoint.address == point_request.address,
+                    ModbusPoint.type == point_request.type,
+                    ModbusPoint.unit_id == point_request.unit_id
+                )
             )
             
-            db.add(point)
-            created_points.append(point)
+            if existing_point.scalar_one_or_none():
+                # Skip duplicate point
+                skipped_points.append({
+                    "name": point_request.name,
+                    "address": point_request.address,
+                    "type": point_request.type,
+                    "unit_id": point_request.unit_id,
+                    "reason": "Point already exists"
+                })
+            else:
+                # Create new point
+                point = ModbusPoint(
+                    controller_id=request.controller_id,
+                    name=point_request.name,
+                    description=point_request.description,
+                    type=point_request.type,
+                    data_type=point_request.data_type,
+                    address=point_request.address,
+                    len=point_request.len,
+                    unit_id=point_request.unit_id,
+                    formula=point_request.formula,
+                    unit=point_request.unit,
+                    min_value=point_request.min_value,
+                    max_value=point_request.max_value
+                )
+                
+                db.add(point)
+                await db.commit()
+                await db.refresh(point)
+                created_points.append(point)
         
-        await db.commit()
-        
-        for point in created_points:
-            await db.refresh(point)
-        
+        # Convert to ModbusPointResponse objects
         point_responses = [
             ModbusPointResponse(
                 id=point.id,
@@ -313,10 +379,13 @@ async def create_modbus_points_batch(request: ModbusPointBatchCreateRequest, db:
             for point in created_points
         ]
         
-        return ModbusPointBatchCreateResponse(
-            total=len(point_responses),
-            points=point_responses
-        )
+        return {
+            "created_points": point_responses,
+            "skipped_points": skipped_points,
+            "total_requested": len(request.points),
+            "created_count": len(created_points),
+            "skipped_count": len(skipped_points)
+        }
         
     except ModbusControllerNotFoundException:
         await db.rollback()
@@ -373,78 +442,75 @@ async def get_modbus_points_by_controller(controller_id: str, db: AsyncSession, 
     except Exception as e:
         raise ServerException(f"Failed to get point list: {str(e)}")
 
-async def update_modbus_point(point_id: str, request: ModbusPointUpdateRequest, db: AsyncSession) -> ModbusPointResponse:
+async def update_modbus_point(
+    point_id: str, 
+    request: ModbusPointUpdateRequest, 
+    db: AsyncSession
+) -> ModbusPointResponse:
     """Update a Modbus point"""
     try:
-        result = await db.execute(
+        point_result = await db.execute(
             select(ModbusPoint).where(ModbusPoint.id == point_id)
         )
-        point = result.scalar_one_or_none()
+        point = point_result.scalar_one_or_none()
         
         if not point:
             raise ModbusPointNotFoundException(f"Point {point_id} not found")
         
-        update_data = {}
-        if request.name is not None:
-            update_data["name"] = request.name
-        if request.description is not None:
-            update_data["description"] = request.description
-        if request.type is not None:
-            update_data["type"] = request.type
-        if request.data_type is not None:
-            update_data["data_type"] = request.data_type
-        if request.address is not None:
-            update_data["address"] = request.address
-        if request.len is not None:
-            update_data["len"] = request.len
-        if request.unit_id is not None:
-            update_data["unit_id"] = request.unit_id
-        if request.formula is not None:
-            update_data["formula"] = request.formula
-        if request.unit is not None:
-            update_data["unit"] = request.unit
-        if request.min_value is not None:
-            update_data["min_value"] = request.min_value
-        if request.max_value is not None:
-            update_data["max_value"] = request.max_value
+        # Check for duplicates
+        new_address = request.address if request.address is not None else point.address
+        new_type = request.type if request.type is not None else point.type
+        new_unit_id = request.unit_id if request.unit_id is not None else point.unit_id
         
-        if not update_data:
-            raise ModbusValidationException("No data to update")
-        
-        update_data["updated_at"] = datetime.now()
-        
-        await db.execute(
-            update(ModbusPoint)
-            .where(ModbusPoint.id == point_id)
-            .values(**update_data)
+        existing_point = await db.execute(
+            select(ModbusPoint).where(
+                ModbusPoint.controller_id == point.controller_id,
+                ModbusPoint.address == new_address,
+                ModbusPoint.type == new_type,
+                ModbusPoint.unit_id == new_unit_id,
+                ModbusPoint.id != point_id
+            )
         )
         
-        await db.commit()
+        if existing_point.scalar_one_or_none():
+            raise ModbusPointDuplicateException(
+                f"Point with controller_id={point.controller_id}, address={new_address}, "
+                f"type={new_type}, unit_id={new_unit_id} already exists"
+            )
         
-        result = await db.execute(
-            select(ModbusPoint).where(ModbusPoint.id == point_id)
-        )
-        updated_point = result.scalar_one()
+        # Update point attributes
+        update_data = request.dict(exclude_unset=True)
+        if update_data:
+            await db.execute(
+                update(ModbusPoint)
+                .where(ModbusPoint.id == point_id)
+                .values(**update_data)
+            )
+            await db.commit()
+            
+            # Refresh the point
+            await db.refresh(point)
         
+        # Convert to ModbusPointResponse
         return ModbusPointResponse(
-            id=updated_point.id,
-            controller_id=updated_point.controller_id,
-            name=updated_point.name,
-            description=updated_point.description,
-            type=updated_point.type,
-            data_type=updated_point.data_type,
-            address=updated_point.address,
-            len=updated_point.len,
-            unit_id=updated_point.unit_id,
-            formula=updated_point.formula,
-            unit=updated_point.unit,
-            min_value=updated_point.min_value,
-            max_value=updated_point.max_value,
-            created_at=updated_point.created_at.isoformat(),
-            updated_at=updated_point.updated_at.isoformat()
+            id=point.id,
+            controller_id=point.controller_id,
+            name=point.name,
+            description=point.description,
+            type=point.type,
+            data_type=point.data_type,
+            address=point.address,
+            len=point.len,
+            unit_id=point.unit_id,
+            formula=point.formula,
+            unit=point.unit,
+            min_value=point.min_value,
+            max_value=point.max_value,
+            created_at=point.created_at.isoformat(),
+            updated_at=point.updated_at.isoformat()
         )
         
-    except (ModbusPointNotFoundException, ModbusValidationException):
+    except (ModbusPointNotFoundException, ModbusPointDuplicateException):
         await db.rollback()
         raise
     except Exception as e:
@@ -525,7 +591,7 @@ async def read_modbus_point_data(point_id: str, db: AsyncSession, modbus: Modbus
     except Exception as e:
         raise ModbusReadException(f"Failed to read point data: {str(e)}")
 
-async def read_modbus_controller_points_data(controller_id: str, db: AsyncSession, modbus: ModbusManager, point_type: str = None) -> ModbusControllerValuesResponse:
+async def read_modbus_controller_points_data(controller_id: str, db: AsyncSession, modbus: ModbusManager, point_type: str = None, convert: bool = True) -> ModbusControllerValuesResponse:
     """Read values from all points of a controller (simplified response)"""
     try:
         controller_result = await db.execute(
@@ -552,22 +618,37 @@ async def read_modbus_controller_points_data(controller_id: str, db: AsyncSessio
         
         for point in points:
             try:
-                data_result = await modbus.read_point_data(
-                    host=controller.host,
-                    port=controller.port,
-                    point_type=point.type,
-                    address=point.address,
-                    length=point.len,
-                    unit_id=point.unit_id,
-                    data_type=point.data_type,
-                    formula=point.formula,
-                    min_value=point.min_value,
-                    max_value=point.max_value
-                )
+                if convert:
+                    # Use original conversion logic
+                    data_result = await modbus.read_point_data(
+                        host=controller.host,
+                        port=controller.port,
+                        point_type=point.type,
+                        address=point.address,
+                        length=point.len,
+                        unit_id=point.unit_id,
+                        data_type=point.data_type,
+                        formula=point.formula,
+                        min_value=point.min_value,
+                        max_value=point.max_value
+                    )
+                    final_value = data_result["final_value"]
+                else:
+                    # No conversion, read raw data directly
+                    raw_data = await modbus.read_modbus_data(
+                        client_id=modbus.ensure_controller_client(controller.id, controller.host, controller.port, controller.timeout),
+                        point_type=point.type,
+                        address=point.address,
+                        count=point.len,
+                        unit_id=point.unit_id
+                    )
+                    # If single value, take first; if multiple values, keep as list
+                    final_value = raw_data[0] if len(raw_data) == 1 else raw_data
                 
                 point_value = ModbusPointValueResponse(
+                    point_id=point.id,
                     name=point.name,
-                    value=data_result["final_value"]
+                    value=final_value
                 )
                 
                 successful_values.append(point_value)
@@ -647,28 +728,34 @@ async def write_modbus_point_data(point_id: str, request: ModbusPointWriteReques
 # ===== Configuration Import/Export Services =====
 
 async def export_modbus_controller_config_file(
-    controller_id: str, 
-    format: ConfigFormat, 
-    db: AsyncSession
+    controller_ids: List[str] = None, 
+    format: ConfigFormat = ConfigFormat.NATIVE, 
+    db: AsyncSession = None
 ) -> Dict[str, str]:
-    """Export controller configuration as file"""
+    """Export controller configuration as file (supports multiple controllers)"""
     try:
-        # First get controller information to get the name
-        controller_result = await db.execute(
-            select(ModbusController).where(ModbusController.id == controller_id)
-        )
-        controller = controller_result.scalar_one_or_none()
-        
-        if not controller:
-            raise ModbusControllerNotFoundException(f"Controller {controller_id} not found")
-        
         manager = ModbusConfigManager()
-        config = await manager.export_config(controller_id, db, format)
+        config = await manager.export_config(controller_ids, db, format)
         
-        safe_controller_name = "".join(c for c in controller.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        safe_controller_name = safe_controller_name.replace(' ', '_')
-        
-        filename = f"modbus_{safe_controller_name}_{format.value}.json"
+        # Create filename based on what's being exported
+        if controller_ids is None:
+            # Export all controllers
+            filename = f"modbus_all_controllers_{format.value}.json"
+        elif len(controller_ids) == 1:
+            # Export single controller
+            controller_result = await db.execute(
+                select(ModbusController).where(ModbusController.id == controller_ids[0])
+            )
+            controller = controller_result.scalar_one_or_none()
+            if not controller:
+                raise ModbusControllerNotFoundException(f"Controller {controller_ids[0]} not found")
+            
+            safe_controller_name = "".join(c for c in controller.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            safe_controller_name = safe_controller_name.replace(' ', '_')
+            filename = f"modbus_{safe_controller_name}_{format.value}.json"
+        else:
+            # Export multiple specific controllers
+            filename = f"modbus_multiple_controllers_{format.value}.json"
         
         # Create temporary file
         temp_dir = tempfile.gettempdir()
@@ -681,8 +768,7 @@ async def export_modbus_controller_config_file(
         return {
             "file_path": file_path,
             "filename": filename,
-            "controller_id": controller_id,
-            "controller_name": controller.name,
+            "controller_ids": controller_ids,
             "format": format.value,
             "export_time": datetime.now().isoformat()
         }
@@ -697,20 +783,46 @@ async def export_modbus_controller_config_file(
 async def import_modbus_configuration_from_file(
     config: Dict[str, Any], 
     format: ConfigFormat, 
-    db: AsyncSession
+    db: AsyncSession,
+    overwrite: bool = False
 ) -> ModbusConfigImportResponse:
     """Import configuration from file"""
     try:
-        controllers = await import_modbus_config(config, db, format.value)
+        import_result = await import_modbus_config(config, db, format.value, overwrite)
         
-        # Calculate total points
+        # Get detailed information for each imported controller
+        controller_info_list = []
         total_points = 0
-        for controller in controllers:
+        
+        for controller in import_result["imported_controllers"]:
             points = await get_modbus_points_by_controller(controller.id, db)
-            total_points += points.total
+            points_count = points.total
+            total_points += points_count
+            
+            controller_info = ModbusControllerImportInfo(
+                controller_id=controller.id,
+                controller_name=controller.name,
+                points_count=points_count
+            )
+            controller_info_list.append(controller_info)
+        
+        # Convert skipped controllers to response format
+        skipped_controllers = [
+            ModbusControllerSkipInfo(
+                controller_name=skip_info["controller_name"],
+                host=skip_info["host"],
+                port=skip_info["port"],
+                reason=skip_info["reason"]
+            )
+            for skip_info in import_result["skipped_controllers"]
+        ]
         
         return ModbusConfigImportResponse(
-            imported_controllers=[ctrl.id for ctrl in controllers],
+            imported_controllers=controller_info_list,
+            skipped_controllers=skipped_controllers,
+            total_requested=import_result["total_requested"],
+            imported_count=import_result["imported_count"],
+            skipped_count=import_result["skipped_count"],
             total_points=total_points,
             import_time=datetime.now().isoformat()
         )
@@ -728,13 +840,69 @@ async def validate_modbus_configuration_from_file(
     try:
         validation_result = validate_modbus_config(config, format.value)
         
+        # Extract controller information from config
+        controllers_found = []
+        total_points = 0
+        
+        if format == ConfigFormat.NATIVE:
+            if "controller" in config and "points" in config:
+                # Single controller format
+                controller_name = config["controller"].get("name", "Unknown Controller")
+                points_count = len(config["points"])
+                total_points = points_count
+                
+                controllers_found.append(ModbusControllerValidationInfo(
+                    controller_name=controller_name,
+                    points_count=points_count
+                ))
+                
+            elif "controllers" in config:
+                # Multi-controller format
+                for controller_data in config["controllers"]:
+                    controller_name = controller_data.get("name", "Unknown Controller")
+                    points_count = len(controller_data.get("points", []))
+                    total_points += points_count
+                    
+                    controllers_found.append(ModbusControllerValidationInfo(
+                        controller_name=controller_name,
+                        points_count=points_count
+                    ))
+                    
+        elif format == ConfigFormat.THINGSBOARD:
+            master = config.get("master", {})
+            slaves = master.get("slaves", [])
+            
+            for slave in slaves:
+                controller_name = slave.get("deviceName", "Unknown Controller")
+                # Count points from all sections
+                attributes_count = len(slave.get("attributes", []))
+                timeseries_count = len(slave.get("timeseries", []))
+                rpc_count = len(slave.get("rpc", []))
+                points_count = attributes_count + timeseries_count + rpc_count
+                total_points += points_count
+                
+                controllers_found.append(ModbusControllerValidationInfo(
+                    controller_name=controller_name,
+                    points_count=points_count
+                ))
+        
         return ModbusConfigValidationResponse(
             is_valid=validation_result.is_valid,
             errors=validation_result.errors,
-            warnings=validation_result.warnings
+            warnings=validation_result.warnings,
+            controllers_found=controllers_found,
+            total_controllers=len(controllers_found),
+            total_points=total_points
         )
         
     except (ModbusConfigException, ModbusConfigFormatMismatchException):
         raise
     except Exception as e:
         raise ServerException(f"Failed to validate configuration: {str(e)}")
+
+async def delete_all_modbus_points_by_controller_id(controller_id: str, db: AsyncSession) -> None:
+    """Delete all points for a specific controller"""
+    await db.execute(
+        delete(ModbusPoint).where(ModbusPoint.controller_id == controller_id)
+    )
+    await db.commit()

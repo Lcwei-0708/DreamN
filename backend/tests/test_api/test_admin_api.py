@@ -413,8 +413,8 @@ async def test_update_role_attributes_success(client):
          patch("extensions.keycloak.KeycloakAdmin.a_update_realm_role", return_value=None):
         payload = {
             "attributes": {
-                "permissions": ["read", "write", "delete"],
-                "department": ["IT"]
+                "permissions": True,
+                "department": True
             }
         }
         response = await client.put(
@@ -441,7 +441,7 @@ async def test_update_role_attributes_not_found(client):
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_roles_of_user", new_callable=AsyncMock, return_value=fake_user_roles), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_role", side_effect=mock_get_role_error), \
          patch("extensions.keycloak.KeycloakAdmin.a_update_realm_role", side_effect=mock_get_role_error):
-        payload = {"attributes": {"key": ["value"]}}
+        payload = {"attributes": {"key": True}}
         response = await client.put(
             "/api/admin/roles/nonexistent/attributes", 
             json=payload,

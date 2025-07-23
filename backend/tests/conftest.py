@@ -110,20 +110,66 @@ async def mock_modbus():
     mock._initialized = False
     mock.controller_mapping = {}
     
+    # Define connection failure conditions
+    def should_fail_connection(host, port):
+        """Determine if connection should fail based on host and port"""
+        # Specific IP range to simulate connection failure (e.g., 192.168.1.100-200)
+        if host.startswith("192.168.1") and 100 <= int(host.split(".")[-1]) <= 200:
+            return True
+        
+        # Specific port range to simulate connection failure (e.g., port 1000-2000)
+        if 1000 <= port <= 2000:
+            return True
+        
+        # Specific host names to simulate connection failure
+        if host in ["failed-host.local", "unreachable.example.com"]:
+            return True
+        
+        # Specific IPs to simulate connection failure
+        if host in ["192.168.1.254", "10.0.0.1"]:
+            return True
+        
+        return False
+    
     # Mock create_tcp method
     def mock_create_tcp(host, port, timeout=30):
         client_id = f"tcp_{host}_{port}"
         mock_client = MagicMock()
-        mock_client.connected = True
-        mock_client.is_socket_open.return_value = True
-        mock.clients[client_id] = mock_client
-        mock.client_status[client_id] = True
+        
+        # Determine connection status based on conditions
+        if should_fail_connection(host, port):
+            mock_client.connected = False
+            mock_client.is_socket_open.return_value = False
+            mock.clients[client_id] = mock_client
+            mock.client_status[client_id] = False
+        else:
+            mock_client.connected = True
+            mock_client.is_socket_open.return_value = True
+            mock.clients[client_id] = mock_client
+            mock.client_status[client_id] = True
+        
         return client_id
     
     mock.create_tcp.side_effect = mock_create_tcp
     
-    # Mock connect method
-    mock.connect = AsyncMock(return_value=True)
+    # Mock connect method - determine success based on client_id
+    async def mock_connect(client_id):
+        # Parse host and port from client_id
+        # client_id format: "tcp_host_port"
+        try:
+            parts = client_id.split("_")
+            if len(parts) >= 3:
+                host = parts[1]
+                port = int(parts[2])
+                should_fail = should_fail_connection(host, port)
+                return not should_fail
+        except (ValueError, IndexError):
+            pass
+        
+        # Default to successful connection
+        return True
+    
+    mock.connect = mock_connect
     
     # Mock disconnect method
     mock.disconnect.return_value = None
@@ -133,6 +179,10 @@ async def mock_modbus():
     
     # Mock read operations
     def mock_read_point_data(host, port, point_type, address, length, unit_id, data_type, formula=None, min_value=None, max_value=None):
+        # If connection fails, raise exception
+        if should_fail_connection(host, port):
+            raise Exception("Connection failed")
+        
         return {
             "raw_data": [1234],
             "converted_value": 1234,
@@ -149,6 +199,10 @@ async def mock_modbus():
     
     # Mock write operations
     def mock_write_point_data(host, port, point_type, address, value, unit_id, data_type, formula=None, min_value=None, max_value=None):
+        # If connection fails, raise exception
+        if should_fail_connection(host, port):
+            raise Exception("Connection failed")
+        
         return {
             "write_value": value,
             "raw_data": [value] if isinstance(value, (int, float)) else [1 if value else 0],
@@ -160,6 +214,17 @@ async def mock_modbus():
     
     # Mock read_modbus_data method
     def mock_read_modbus_data(client_id, point_type, address, count, unit_id):
+        # Parse host and port from client_id
+        try:
+            parts = client_id.split("_")
+            if len(parts) >= 3:
+                host = parts[1]
+                port = int(parts[2])
+                if should_fail_connection(host, port):
+                    raise Exception("Connection failed")
+        except (ValueError, IndexError):
+            pass
+        
         if point_type in ["coil", "input"]:
             return [True, False] * (count // 2) + ([True] if count % 2 else [])
         else:
@@ -169,6 +234,17 @@ async def mock_modbus():
     
     # Mock write_modbus_data method
     def mock_write_modbus_data(client_id, point_type, address, value, unit_id):
+        # Parse host and port from client_id
+        try:
+            parts = client_id.split("_")
+            if len(parts) >= 3:
+                host = parts[1]
+                port = int(parts[2])
+                if should_fail_connection(host, port):
+                    raise Exception("Connection failed")
+        except (ValueError, IndexError):
+            pass
+        
         if point_type == "coil":
             return [value]
         else:
