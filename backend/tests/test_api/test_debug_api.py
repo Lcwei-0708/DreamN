@@ -110,11 +110,9 @@ class TestClearBlockedIPs:
         with patch("api.debug.services.aioredis.from_url", side_effect=mock_from_url):
             result = await clear_blocked_ips()
             
-            # 驗證 Redis 操作
             mock_redis.keys.assert_called_once_with("block:*")
             mock_redis.delete.assert_not_called()
             
-            # 驗證返回結果
             assert result.count == 0
             assert result.cleared_ips == []
     
