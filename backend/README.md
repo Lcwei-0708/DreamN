@@ -17,6 +17,7 @@ This backend project is built with modern Python technologies to provide a robus
 - **Asyncio**: Native Python async event loop for high concurrency and performance.
 - **Testing**: Pytest (asyncio, coverage); fully isolated environment with a dedicated test database.  
   _See [Test Docs](./tests/README.md) for details._
+- **Modbus**: Industrial communication protocol support for PLC and IoT device integration.
 
 ## Features
 
@@ -31,3 +32,5 @@ This backend project is built with modern Python technologies to provide a robus
 - 🔌 Real-time communication via WebSocket
 - 🔐 Secure authentication and SSO with Keycloak
 - ⚡ Fast caching and pub/sub with Redis
+- 🏭 Industrial IoT integration with Modbus TCP support
+- 🔄 Asynchronous Modbus communication for high-performance industrial data handling
