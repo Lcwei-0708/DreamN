@@ -1,5 +1,5 @@
 import math
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from websocket.manager import get_manager
 from extensions.keycloak import get_keycloak
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,8 @@ from .schema import (UserInfo,
     CreateRoleRequest, 
     CreateRoleResponse, 
     UpdateRoleRequest, 
-    RoleList
+    RoleList,
+    DeleteUsersResponse
 )
 
 ws_manager = get_manager()
@@ -206,14 +207,41 @@ async def update_user(user_id: str, user_data: UpdateUserRequest) -> None:
             raise UserNotFoundException(f"user_id: {user_id}")
         raise ServerException(f"Failed to update user {user_id}: {str(e)}")
 
-async def delete_user(user_id: str) -> None:
-    """Delete user"""
-    try:
-        await keycloak_admin.a_delete_user(user_id)
-    except Exception as e:
-        if "not found" in str(e).lower():
-            raise UserNotFoundException(f"user_id: {user_id}")
-        raise ServerException(f"Failed to delete user {user_id}: {str(e)}")
+async def delete_users(user_ids: List[str]) -> DeleteUsersResponse:
+    """Delete multiple users"""
+    results = []
+    
+    for user_id in user_ids:
+        try:
+            await keycloak_admin.a_delete_user(user_id)
+            results.append({
+                "id": user_id,
+                "status": "success",
+                "message": "Deleted Successfully"
+            })
+        except Exception as e:
+            if "not found" in str(e).lower():
+                results.append({
+                    "id": user_id,
+                    "status": "not_found",
+                    "message": "User not found"
+                })
+            else:
+                results.append({
+                    "id": user_id,
+                    "status": "error",
+                    "message": "Server error"
+                })
+    
+    deleted_count = len([r for r in results if r["status"] == "success"])
+    failed_count = len([r for r in results if r["status"] != "success"])
+    
+    return DeleteUsersResponse(
+        total_requested=len(user_ids),
+        deleted_count=deleted_count,
+        failed_count=failed_count,
+        results=results
+    )
 
 async def reset_user_password(user_id: str, new_password: str) -> None:
     """Reset user password"""

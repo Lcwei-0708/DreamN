@@ -1,19 +1,22 @@
-from typing import Optional
+from typing import Optional, List, Dict, Any, Union
 from core.security import verify_token
 from extensions.keycloak import get_keycloak
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.dependencies import get_db, rate_limit_on_auth_fail
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Body
 from utils.response import APIResponse, parse_responses, common_responses
 from .schema import (
     UserPagination, UserSortBy,
     CreateUserRequest, UpdateUserRequest, ResetPasswordRequest,
     RoleList, CreateRoleRequest, UpdateRoleRequest,
-    RoleAttributesUpdateRequest, CreateRoleResponse, CreateUserResponse
+    RoleAttributesUpdateRequest, CreateRoleResponse, CreateUserResponse,
+    DeleteUsersRequest, DeleteUsersResponse, DeleteUsersFailedResponse,
+    delete_users_response_example, delete_users_failed_response_example
 )
 from .services import (
-    get_all_users, create_user, update_user, delete_user, reset_user_password,
-    get_all_roles, create_role, update_role, delete_role, update_role_attributes
+    get_all_users, create_user, update_user, reset_user_password,
+    get_all_roles, create_role, update_role, delete_role, update_role_attributes,
+    delete_users
 )
 from utils.custom_exception import (
     UserNotFoundException,
@@ -21,6 +24,7 @@ from utils.custom_exception import (
     RoleAlreadyExistsException,
     EmailAlreadyExistsException
 )
+from fastapi.responses import JSONResponse
 
 keycloak = get_keycloak()
 
@@ -115,26 +119,46 @@ async def update_user_info(user_id: str, payload: UpdateUserRequest, request: Re
         raise HTTPException(status_code=500)
 
 @router.delete(
-    "/users/{user_id}",
-    response_model=APIResponse[None],
+    "/users",
+    response_model=APIResponse[Union[None, DeleteUsersResponse, DeleteUsersFailedResponse]],
     response_model_exclude_none=True,
-    summary="Delete user",
-    description="Delete user (only admin can use)",
+    summary="Delete users",
+    description="Delete users (only admin can use)",
     responses=parse_responses({
-        200: ("User deleted successfully", None),
-        404: ("User not found", None)
+        200: ("All users deleted successfully", None),
+        207: ("Delete users partial success", DeleteUsersResponse, delete_users_response_example),
+        400: ("All users failed to delete", DeleteUsersFailedResponse, delete_users_failed_response_example)
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
 @keycloak.require_permission("admin")
-async def delete_user_by_id(user_id: str, request: Request, token: str = Depends(verify_token)):
-    try:
-        await delete_user(user_id)
-        return APIResponse(code=200, message="User deleted successfully")
-    except UserNotFoundException:
-        raise HTTPException(status_code=404, detail="User not found")
-    except Exception:
-        raise HTTPException(status_code=500)
+async def delete_users_batch(
+    request: Request, 
+    payload: DeleteUsersRequest = Body(...),
+    token: str = Depends(verify_token)
+):
+    result = await delete_users(payload.user_ids)
+    
+    if result.failed_count == 0:
+        # All success
+        return APIResponse(code=200, message="All users deleted successfully")
+    elif result.deleted_count == 0:
+        # All failed
+        failed_results = [r for r in result.results if r.status != "success"]
+        response_data = APIResponse(
+            code=400, 
+            message="All users failed to delete", 
+            data=DeleteUsersFailedResponse(results=failed_results)
+        )
+        raise HTTPException(status_code=400, detail=response_data.dict(exclude_none=True))
+    else:
+        # Partial success, partial failed
+        response_data = APIResponse(
+            code=207, 
+            message="Delete users partial success", 
+            data=result
+        )
+        raise HTTPException(status_code=207, detail=response_data.dict(exclude_none=True))
 
 @router.post(
     "/users/{user_id}/reset-password",

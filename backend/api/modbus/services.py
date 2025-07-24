@@ -2,7 +2,7 @@ import logging
 import json
 import tempfile
 import os
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List, Union, Optional
 from datetime import datetime
 from extensions.modbus import ModbusManager
 from models.modbus_point import ModbusPoint
@@ -12,12 +12,14 @@ from models.modbus_controller import ModbusController
 from .schema import (
     ModbusControllerCreateRequest, ModbusControllerUpdateRequest, ModbusControllerResponse,
     ModbusControllerListResponse, ModbusPointBatchCreateRequest, ModbusPointUpdateRequest,
-    ModbusPointResponse, ModbusPointListResponse, ModbusPointBatchCreateResponse,
-    ModbusPointDataResponse, ModbusPointValueResponse, ModbusControllerValuesResponse,
+    ModbusPointResponse, ModbusPointListResponse, ModbusPointDataResponse, 
+    ModbusPointValueResponse, ModbusControllerValuesResponse,
     ModbusPointWriteRequest, ModbusPointWriteResponse,
     ModbusConfigImportResponse, ModbusConfigValidationResponse,
     ConfigFormat, ModbusControllerImportInfo, ModbusControllerValidationInfo,
-    ModbusConfigImportRequest, ModbusControllerSkipInfo
+    ModbusControllerSkipInfo, ModbusControllerDeleteRequest, ModbusPointDeleteRequest,
+    ModbusControllerDeleteResponse, ModbusPointDeleteResponse,
+    ModbusControllerDeleteResponse, ModbusPointDeleteResponse
 )
 from utils.custom_exception import (
     ServerException, ModbusConnectionException, ModbusControllerNotFoundException,
@@ -98,10 +100,8 @@ async def create_modbus_controller(request: ModbusControllerCreateRequest, db: A
             updated_at=controller.updated_at.isoformat()
         )
     except ModbusControllerDuplicateException:
-        await db.rollback()
         raise
     except Exception as e:
-        await db.rollback()
         raise ServerException(f"Failed to create controller: {str(e)}")
 
 async def get_modbus_controllers(
@@ -226,36 +226,63 @@ async def update_modbus_controller(controller_id: str, request: ModbusController
             updated_at=updated_controller.updated_at.isoformat()
         )
         
-    except (ModbusConnectionException, ModbusControllerNotFoundException, ModbusControllerDuplicateException):
-        await db.rollback()
+    except ModbusConnectionException:
+        raise
+    except ModbusControllerNotFoundException:
+        raise
+    except ModbusControllerDuplicateException:
         raise
     except Exception as e:
-        await db.rollback()
         raise ServerException(f"Failed to update controller: {str(e)}")
 
-async def delete_modbus_controller(controller_id: str, db: AsyncSession) -> bool:
-    """Delete Modbus controller (clear related points)"""
-    try:
-        await db.execute(
-            delete(ModbusPoint).where(ModbusPoint.controller_id == controller_id)
-        )
-        
-        result = await db.execute(
-            delete(ModbusController).where(ModbusController.id == controller_id)
-        )
-        
-        if result.rowcount == 0:
-            raise ModbusControllerNotFoundException(f"Controller {controller_id} not found")
-        
-        await db.commit()
-        return True
-        
-    except ModbusControllerNotFoundException:
-        await db.rollback()
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise ServerException(f"Failed to delete controller: {str(e)}")
+async def delete_modbus_controllers(
+    request: ModbusControllerDeleteRequest, 
+    db: AsyncSession
+) -> ModbusControllerDeleteResponse:
+    """Delete multiple Modbus controllers (clear related points)"""
+    results = []
+    
+    for controller_id in request.controller_ids:
+        try:
+            await db.execute(
+                delete(ModbusPoint).where(ModbusPoint.controller_id == controller_id)
+            )
+            
+            result = await db.execute(
+                delete(ModbusController).where(ModbusController.id == controller_id)
+            )
+            
+            if result.rowcount > 0:
+                results.append({
+                    "id": controller_id,
+                    "status": "success",
+                    "message": "Deleted Successfully"
+                })
+            else:
+                results.append({
+                    "id": controller_id,
+                    "status": "not_found",
+                    "message": "Controller not found"
+                })
+                
+        except Exception as e:
+            results.append({
+                "id": controller_id,
+                "status": "error",
+                "message": "Server error"
+            })
+    
+    await db.commit()
+    
+    deleted_count = len([r for r in results if r["status"] == "success"])
+    failed_count = len([r for r in results if r["status"] != "success"])
+    
+    return ModbusControllerDeleteResponse(
+        total_requested=len(request.controller_ids),
+        deleted_count=deleted_count,
+        failed_count=failed_count,
+        results=results
+    )
 
 async def test_modbus_controller(request: ModbusControllerCreateRequest, modbus: ModbusManager) -> Dict[str, Any]:
     """Test Modbus controller connection (do not save to database)"""
@@ -270,7 +297,7 @@ async def test_modbus_controller(request: ModbusControllerCreateRequest, modbus:
         success = await modbus.connect(test_client_id)
         end_time = datetime.now()
         
-        response_time = (end_time - start_time).total_seconds() * 1000  # milliseconds
+        response_time = (end_time - start_time).total_seconds() * 1000
         
         modbus.disconnect(test_client_id)
         del modbus.clients[test_client_id]
@@ -388,10 +415,8 @@ async def create_modbus_points_batch(
         }
         
     except ModbusControllerNotFoundException:
-        await db.rollback()
         raise
     except Exception as e:
-        await db.rollback()
         raise ServerException(f"Failed to create points: {str(e)}")
 
 async def get_modbus_points_by_controller(controller_id: str, db: AsyncSession, point_type: str = None) -> ModbusPointListResponse:
@@ -510,32 +535,57 @@ async def update_modbus_point(
             updated_at=point.updated_at.isoformat()
         )
         
-    except (ModbusPointNotFoundException, ModbusPointDuplicateException):
-        await db.rollback()
+    except ModbusPointNotFoundException:
+        raise
+    except ModbusPointDuplicateException:
         raise
     except Exception as e:
-        await db.rollback()
         raise ServerException(f"Failed to update point: {str(e)}")
 
-async def delete_modbus_point(point_id: str, db: AsyncSession) -> bool:
-    """Delete a Modbus point"""
-    try:
-        result = await db.execute(
-            delete(ModbusPoint).where(ModbusPoint.id == point_id)
-        )
-        
-        if result.rowcount == 0:
-            raise ModbusPointNotFoundException(f"Point {point_id} not found")
-        
-        await db.commit()
-        return True
-        
-    except ModbusPointNotFoundException:
-        await db.rollback()
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise ServerException(f"Failed to delete point: {str(e)}")
+async def delete_modbus_points(
+    request: ModbusPointDeleteRequest, 
+    db: AsyncSession
+) -> ModbusPointDeleteResponse:
+    """Delete multiple Modbus points"""
+    results = []
+    
+    for point_id in request.point_ids:
+        try:
+            result = await db.execute(
+                delete(ModbusPoint).where(ModbusPoint.id == point_id)
+            )
+            
+            if result.rowcount > 0:
+                results.append({
+                    "id": point_id,
+                    "status": "success",
+                    "message": "Deleted Successfully"
+                })
+            else:
+                results.append({
+                    "id": point_id,
+                    "status": "not_found",
+                    "message": "Point not found"
+                })
+                
+        except Exception as e:
+            results.append({
+                "id": point_id,
+                "status": "error",
+                "message": "Server error"
+            })
+    
+    await db.commit()
+    
+    deleted_count = len([r for r in results if r["status"] == "success"])
+    failed_count = len([r for r in results if r["status"] != "success"])
+    
+    return ModbusPointDeleteResponse(
+        total_requested=len(request.point_ids),
+        deleted_count=deleted_count,
+        failed_count=failed_count,
+        results=results
+    )
 
 async def read_modbus_point_data(point_id: str, db: AsyncSession, modbus: ModbusManager) -> ModbusPointDataResponse:
     """Read data from a specific Modbus point"""
@@ -724,8 +774,6 @@ async def write_modbus_point_data(point_id: str, request: ModbusPointWriteReques
         raise
     except Exception as e:
         raise ModbusWriteException(f"Failed to write point data: {str(e)}")
-
-# ===== Configuration Import/Export Services =====
 
 async def export_modbus_controller_config_file(
     controller_ids: List[str] = None, 

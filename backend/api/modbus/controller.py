@@ -1,22 +1,23 @@
 import json
-from typing import Annotated, List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any, Union
 from core.dependencies import get_db
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from extensions.modbus import get_modbus, ModbusManager
 from utils.response import APIResponse, parse_responses, common_responses
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form, Body
 from utils.custom_exception import (
     ModbusConnectionException, ModbusControllerNotFoundException,
     ModbusPointNotFoundException, ModbusReadException, ModbusValidationException,
     ModbusWriteException, ModbusRangeValidationException,
     ModbusConfigException, ModbusConfigFormatMismatchException,
-    ModbusControllerDuplicateException, ModbusPointDuplicateException
+    ModbusControllerDuplicateException, ModbusPointDuplicateException,
+    ServerException
 )
 from .services import (
-    create_modbus_controller, get_modbus_controllers, update_modbus_controller, delete_modbus_controller,
+    create_modbus_controller, get_modbus_controllers, update_modbus_controller, delete_modbus_controllers,
     test_modbus_controller, create_modbus_points_batch, get_modbus_points_by_controller,
-    update_modbus_point, delete_modbus_point, read_modbus_controller_points_data,
+    update_modbus_point, delete_modbus_points, read_modbus_controller_points_data,
     write_modbus_point_data,
     export_modbus_controller_config_file, import_modbus_configuration_from_file,
     validate_modbus_configuration_from_file
@@ -33,6 +34,11 @@ from .schema import (
     modbus_point_write_response_example,
     modbus_point_batch_create_response_example,
     modbus_config_import_response_example,
+    ModbusControllerDeleteRequest, ModbusPointDeleteRequest,
+    ModbusControllerDeleteResponse, ModbusPointDeleteResponse,
+    ModbusControllerDeleteFailedResponse, ModbusPointDeleteFailedResponse,
+    modbus_controller_delete_response_example, modbus_point_delete_response_example,
+    modbus_controller_delete_failed_response_example, modbus_point_delete_failed_response_example,
     PointType, ConfigFormat
 )
 
@@ -109,27 +115,46 @@ async def update_controller(
         raise HTTPException(status_code=500)
 
 @router.delete(
-    "/controllers/{controller_id}",
-    response_model=APIResponse[None],
+    "/controllers",
+    response_model=APIResponse[Union[None, ModbusControllerDeleteResponse, ModbusControllerDeleteFailedResponse]],
     response_model_exclude_unset=True,
-    summary="Delete Modbus controller (clear related points)",
+    summary="Delete Modbus controllers (clear related points)",
     responses=parse_responses({
-        200: ("Controller deleted successfully", None),
-        404: ("Controller not found", None)
+        200: ("All controllers deleted successfully", None),
+        207: ("Delete controllers partial success", ModbusControllerDeleteResponse, modbus_controller_delete_response_example),
+        400: ("All controllers failed to delete", ModbusControllerDeleteFailedResponse, modbus_controller_delete_failed_response_example)
     }, default=common_responses)
 )
-async def delete_controller(
-    controller_id: str,
-    db: Annotated[AsyncSession, Depends(get_db)]
+async def delete_controllers(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    request: ModbusControllerDeleteRequest = Body(...)
 ):
+    """Delete multiple Modbus controllers. Related points will be deleted automatically."""
     try:
-        success = await delete_modbus_controller(controller_id, db)
-        if success:
-            return APIResponse(code=200, message="Controller deleted successfully")
+        result = await delete_modbus_controllers(request, db)
+        
+        if result.failed_count == 0:
+            # All success
+            return APIResponse(code=200, message="All controllers deleted successfully")
+        elif result.deleted_count == 0:
+            # All failed
+            failed_results = [r for r in result.results if r.status != "success"]
+            response_data = APIResponse(
+                code=400, 
+                message="All controllers failed to delete", 
+                data=ModbusControllerDeleteFailedResponse(results=failed_results)
+            )
+            raise HTTPException(status_code=400, detail=response_data.dict(exclude_none=True))
         else:
-            raise HTTPException(status_code=404, detail="Controller not found")
-    except ModbusControllerNotFoundException:
-        raise HTTPException(status_code=404, detail="Controller not found")
+            # Partial success, partial failed
+            response_data = APIResponse(
+                code=207, 
+                message="Delete controllers partial success", 
+                data=result
+            )
+            raise HTTPException(status_code=207, detail=response_data.dict(exclude_none=True))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500)
 
@@ -235,27 +260,46 @@ async def update_point(
         raise HTTPException(status_code=500)
 
 @router.delete(
-    "/points/{point_id}",
-    response_model=APIResponse[None],
+    "/points",
+    response_model=APIResponse[Union[None, ModbusPointDeleteResponse, ModbusPointDeleteFailedResponse]],
     response_model_exclude_unset=True,
-    summary="Delete a Modbus point",
+    summary="Delete Modbus points",
     responses=parse_responses({
-        200: ("Point deleted successfully", None),
-        404: ("Point not found", None)
+        200: ("All points deleted successfully", None),
+        207: ("Delete points partial success", ModbusPointDeleteResponse, modbus_point_delete_response_example),
+        400: ("All points failed to delete", ModbusPointDeleteFailedResponse, modbus_point_delete_failed_response_example)
     }, default=common_responses)
 )
-async def delete_point(
-    point_id: str,
-    db: Annotated[AsyncSession, Depends(get_db)]
+async def delete_points(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    request: ModbusPointDeleteRequest = Body(...)
 ):
+    """Delete multiple Modbus points"""
     try:
-        success = await delete_modbus_point(point_id, db)
-        if success:
-            return APIResponse(code=200, message="Point deleted successfully")
+        result = await delete_modbus_points(request, db)
+        
+        if result.failed_count == 0:
+            # All success
+            return APIResponse(code=200, message="All points deleted successfully")
+        elif result.deleted_count == 0:
+            # All failed
+            failed_results = [r for r in result.results if r.status != "success"]
+            response_data = APIResponse(
+                code=400, 
+                message="All points failed to delete", 
+                data=ModbusPointDeleteFailedResponse(results=failed_results)
+            )
+            raise HTTPException(status_code=400, detail=response_data.dict(exclude_none=True))
         else:
-            raise HTTPException(status_code=404, detail="Point not found")
-    except ModbusPointNotFoundException:
-        raise HTTPException(status_code=404, detail="Point not found")
+            # Partial success, partial failed
+            response_data = APIResponse(
+                code=207, 
+                message="Delete points partial success", 
+                data=result
+            )
+            raise HTTPException(status_code=207, detail=response_data.dict(exclude_none=True))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=500)
 

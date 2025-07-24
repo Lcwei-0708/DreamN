@@ -1,6 +1,5 @@
 from enum import Enum
-from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, EmailStr, Field
 
 class UserInfo(BaseModel):
@@ -73,3 +72,46 @@ class UpdateRoleRequest(BaseModel):
 
 class RoleAttributesUpdateRequest(BaseModel):
     attributes: Dict[str, bool] = Field(..., description="角色屬性", example={"admin": True})
+
+class DeleteUsersRequest(BaseModel):
+    user_ids: List[str] = Field(..., description="要刪除的使用者 ID 列表")
+
+class BatchDeleteResult(BaseModel):
+    id: str = Field(..., description="項目 ID")
+    status: str = Field(..., description="操作狀態(success: 成功, not_found: 找不到, error: 錯誤)", example="success|not_found|error")
+    message: str = Field(..., description="狀態訊息")
+
+class DeleteUsersResponse(BaseModel):
+    total_requested: int = Field(..., description="請求的總使用者數")
+    deleted_count: int = Field(..., description="成功刪除的使用者數")
+    failed_count: int = Field(..., description="刪除失敗的使用者數")
+    results: List[BatchDeleteResult] = Field(..., description="每個使用者的刪除結果")
+
+class DeleteUsersFailedResponse(BaseModel):
+    results: List[BatchDeleteResult] = Field(..., description="每個使用者的刪除失敗結果")
+
+delete_users_response_example = {
+    "code": 207,
+    "message": "Delete users partial success",
+    "data": {
+        "total_requested": 3,
+        "deleted_count": 1,
+        "failed_count": 2,
+        "results": [
+            {"id": "user123", "status": "success", "message": "Deleted Successfully"},
+            {"id": "user456", "status": "not_found", "message": "User not found"},
+            {"id": "user789", "status": "error", "message": "Server error"}
+        ]
+    }
+}
+
+delete_users_failed_response_example = {
+    "code": 400,
+    "message": "Failed to delete 2 users",
+    "data": {
+        "results": [
+            {"id": "user123", "status": "not_found", "message": "User not found"},
+            {"id": "user456", "status": "error", "message": "Server error"}
+        ]
+    }
+}

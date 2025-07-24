@@ -6,9 +6,17 @@ from fastapi.exceptions import RequestValidationError
 def add_exception_handlers(app: FastAPI):
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
+        status_code = exc.status_code
+        
+        if isinstance(exc.detail, dict) and "code" in exc.detail and "message" in exc.detail:
+            return JSONResponse(
+                status_code=status_code,
+                content=exc.detail
+            )
+        
         message = exc.detail if exc.detail else "HTTP Error"
         data = None
-        status_code = exc.status_code
+        
         if status_code == 401:
             if not exc.detail or exc.detail in ["Unauthorized"]:
                 message = "Invalid or expired token"
@@ -18,6 +26,7 @@ def add_exception_handlers(app: FastAPI):
                 message = "Invalid or expired token"
             else:
                 message = "Permission denied"
+        
         resp = APIResponse(code=status_code, message=message, data=data)
         return JSONResponse(
             status_code=status_code,

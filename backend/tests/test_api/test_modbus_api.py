@@ -1,14 +1,11 @@
-import pytest
 import json
-from unittest.mock import AsyncMock, patch, Mock
+import pytest
+from unittest.mock import AsyncMock,  Mock
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.modbus_controller import ModbusController
 from models.modbus_point import ModbusPoint
-from api.modbus.schema import PointType, ConfigFormat
-from main import app
-from extensions.modbus import get_modbus
-from sqlalchemy import delete
+
 
 
 class TestModbusControllerAPI:
@@ -171,7 +168,47 @@ class TestModbusControllerAPI:
         assert "Controller not found" in error_message
     
     @pytest.mark.asyncio
-    async def test_delete_controller_success(self, client: AsyncClient, test_db_session: AsyncSession):
+    async def test_delete_controllers_success(self, client: AsyncClient, test_db_session: AsyncSession):
+        # Create multiple controllers to delete
+        controller1 = ModbusController(
+            name="To Delete 1",
+            host="192.168.1.100",
+            port=502,
+            timeout=10,
+            status=True
+        )
+        controller2 = ModbusController(
+            name="To Delete 2",
+            host="192.168.1.101",
+            port=502,
+            timeout=10,
+            status=True
+        )
+        test_db_session.add(controller1)
+        test_db_session.add(controller2)
+        await test_db_session.commit()
+        await test_db_session.refresh(controller1)
+        await test_db_session.refresh(controller2)
+
+        payload = {
+            "controller_ids": [str(controller1.id), str(controller2.id)]
+        }
+        
+        response = await client.request(
+            "DELETE",
+            "/api/modbus/controllers",
+            json=payload
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 200
+        assert data["message"] == "All controllers deleted successfully"
+        assert "data" not in data
+
+    @pytest.mark.asyncio
+    async def test_delete_controllers_partial_success(self, client: AsyncClient, test_db_session: AsyncSession):
+        # Create one controller to delete
         controller = ModbusController(
             name="To Delete",
             host="192.168.1.100",
@@ -182,21 +219,51 @@ class TestModbusControllerAPI:
         test_db_session.add(controller)
         await test_db_session.commit()
         
-        response = await client.delete(f"/api/modbus/controllers/{controller.id}")
+        payload = {
+            "controller_ids": [str(controller.id), "non-existent-id"]
+        }
         
-        assert response.status_code == 200
+        response = await client.request(
+            "DELETE",
+            "/api/modbus/controllers",
+            json=payload
+        )
+        
+        assert response.status_code == 207
         data = response.json()
-        assert data["code"] == 200
-        assert data["message"] == "Controller deleted successfully"
-    
+        assert data["code"] == 207
+        assert data["message"] == "Delete controllers partial success"
+        assert data["data"]["total_requested"] == 2
+        assert data["data"]["deleted_count"] == 1
+        assert data["data"]["failed_count"] == 1
+        assert len(data["data"]["results"]) == 2
+        
+        success_results = [r for r in data["data"]["results"] if r["status"] == "success"]
+        failed_results = [r for r in data["data"]["results"] if r["status"] == "not_found"]
+        assert len(success_results) == 1
+        assert len(failed_results) == 1
+        assert success_results[0]["id"] == str(controller.id)
+        assert failed_results[0]["id"] == "non-existent-id"
+
     @pytest.mark.asyncio
-    async def test_delete_controller_not_found(self, client: AsyncClient, test_db_session: AsyncSession):
-        response = await client.delete("/api/modbus/controllers/non-existent-id")
+    async def test_delete_controllers_all_not_found(self, client: AsyncClient, test_db_session: AsyncSession):
+        payload = {
+            "controller_ids": ["non-existent-id-1", "non-existent-id-2"]
+        }
         
-        assert response.status_code == 404
+        response = await client.request(
+            "DELETE",
+            "/api/modbus/controllers",
+            json=payload
+        )
+        
+        assert response.status_code == 400
         data = response.json()
-        error_message = data.get("detail") or data.get("message", "")
-        assert "Controller not found" in error_message
+        assert data["code"] == 400
+        assert data["message"] == "All controllers failed to delete"
+        assert data["data"]["results"]
+        assert len(data["data"]["results"]) == 2
+        assert all(r["status"] == "not_found" for r in data["data"]["results"])
     
     @pytest.mark.asyncio
     async def test_test_controller_success(self, client: AsyncClient, test_db_session: AsyncSession):
@@ -456,7 +523,7 @@ class TestModbusPointAPI:
         assert data["data"]["name"] == "Test Point"
     
     @pytest.mark.asyncio
-    async def test_delete_point_success(self, client: AsyncClient, test_db_session: AsyncSession):
+    async def test_delete_points_success(self, client: AsyncClient, test_db_session: AsyncSession):
         controller = ModbusController(
             name="Test Controller",
             host="192.168.1.100",
@@ -467,6 +534,59 @@ class TestModbusPointAPI:
         test_db_session.add(controller)
         await test_db_session.commit()
         
+        # Create multiple points to delete
+        point1 = ModbusPoint(
+            controller_id=controller.id,
+            name="To Delete 1",
+            type="holding_register",
+            data_type="uint16",
+            address=40001,
+            len=1,
+            unit_id=1
+        )
+        point2 = ModbusPoint(
+            controller_id=controller.id,
+            name="To Delete 2",
+            type="input_register",
+            data_type="uint16",
+            address=30001,
+            len=1,
+            unit_id=1
+        )
+        test_db_session.add(point1)
+        test_db_session.add(point2)
+        await test_db_session.commit()
+        
+        payload = {
+            "point_ids": [str(point1.id), str(point2.id)]
+        }
+        
+        # Use client's transport to send request
+        response = await client.request(
+            "DELETE",
+            "/api/modbus/points",
+            json=payload
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 200
+        assert data["message"] == "All points deleted successfully"
+        assert "data" not in data
+
+    @pytest.mark.asyncio
+    async def test_delete_points_partial_success(self, client: AsyncClient, test_db_session: AsyncSession):
+        controller = ModbusController(
+            name="Test Controller",
+            host="192.168.1.100",
+            port=502,
+            timeout=10,
+            status=True
+        )
+        test_db_session.add(controller)
+        await test_db_session.commit()
+        
+        # Create one point to delete
         point = ModbusPoint(
             controller_id=controller.id,
             name="To Delete",
@@ -479,12 +599,53 @@ class TestModbusPointAPI:
         test_db_session.add(point)
         await test_db_session.commit()
         
-        response = await client.delete(f"/api/modbus/points/{point.id}")
+        payload = {
+            "point_ids": [str(point.id), "non-existent-id"]
+        }
         
-        assert response.status_code == 200
+        # Use client's transport to send request
+        response = await client.request(
+            "DELETE",
+            "/api/modbus/points",
+            json=payload
+        )
+        
+        assert response.status_code == 207
         data = response.json()
-        assert data["code"] == 200
-        assert data["message"] == "Point deleted successfully"
+        assert data["code"] == 207
+        assert data["message"] == "Delete points partial success"
+        assert data["data"]["total_requested"] == 2
+        assert data["data"]["deleted_count"] == 1
+        assert data["data"]["failed_count"] == 1
+        assert len(data["data"]["results"]) == 2
+        
+        success_results = [r for r in data["data"]["results"] if r["status"] == "success"]
+        failed_results = [r for r in data["data"]["results"] if r["status"] == "not_found"]
+        assert len(success_results) == 1
+        assert len(failed_results) == 1
+        assert success_results[0]["id"] == str(point.id)
+        assert failed_results[0]["id"] == "non-existent-id"
+
+    @pytest.mark.asyncio
+    async def test_delete_points_all_not_found(self, client: AsyncClient, test_db_session: AsyncSession):
+        payload = {
+            "point_ids": ["non-existent-id-1", "non-existent-id-2"]
+        }
+        
+        # Use client's transport to send request
+        response = await client.request(
+            "DELETE",
+            "/api/modbus/points",
+            json=payload
+        )
+        
+        assert response.status_code == 400
+        data = response.json()
+        assert data["code"] == 400
+        assert data["message"] == "All points failed to delete"
+        assert data["data"]["results"]
+        assert len(data["data"]["results"]) == 2
+        assert all(r["status"] == "not_found" for r in data["data"]["results"])
 
 
 class TestModbusDataAPI:

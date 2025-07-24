@@ -12,6 +12,11 @@ class ConfigFormat(str, Enum):
     native = "native"
     thingsboard = "thingsboard"
 
+class BatchDeleteResult(BaseModel):
+    id: str = Field(..., description="項目 ID")
+    status: str = Field(..., description="操作狀態(success: 成功, not_found: 找不到, error: 錯誤)", example="success|not_found|error")
+    message: str = Field(..., description="狀態訊息")
+
 class ModbusControllerCreateRequest(BaseModel):
     name: str = Field(..., description="控制器名稱", example="Test")
     host: str = Field(..., description="TCP 主機地址", example="192.168.1.100")
@@ -41,6 +46,18 @@ class ModbusControllerListResponse(BaseModel):
     total: int = Field(..., description="總數量")
     controllers: List[ModbusControllerResponse] = Field(..., description="控制器列表")
 
+class ModbusControllerDeleteRequest(BaseModel):
+    controller_ids: List[str] = Field(..., description="要刪除的控制器 ID 列表")
+
+class ModbusControllerDeleteResponse(BaseModel):
+    total_requested: int = Field(..., description="請求的總控制器數")
+    deleted_count: int = Field(..., description="成功刪除的控制器數")
+    failed_count: int = Field(..., description="刪除失敗的控制器數")
+    results: List[BatchDeleteResult] = Field(..., description="每個控制器的刪除結果")
+
+class ModbusControllerDeleteFailedResponse(BaseModel):
+    results: List[BatchDeleteResult] = Field(..., description="每個控制器的刪除失敗結果")
+
 class ModbusPointCreateRequest(BaseModel):
     name: str = Field(..., description="點位名稱", example="Temperature 1")
     description: Optional[str] = Field(None, description="描述", example="鍋爐溫度感測器")
@@ -56,7 +73,7 @@ class ModbusPointCreateRequest(BaseModel):
 
 class ModbusPointBatchCreateRequest(BaseModel):
     controller_id: str = Field(..., description="控制器 ID")
-    points: List[ModbusPointCreateRequest] = Field(..., description="List of points to create")
+    points: List[ModbusPointCreateRequest] = Field(..., description="要建立的點位列表")
 
 class ModbusPointUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, description="點位名稱")
@@ -101,6 +118,18 @@ class ModbusPointBatchCreateResponse(BaseModel):
     total_requested: int = Field(..., description="請求的總點位數")
     created_count: int = Field(..., description="成功建立的點位數")
     skipped_count: int = Field(..., description="被跳過的點位數")
+
+class ModbusPointDeleteRequest(BaseModel):
+    point_ids: List[str] = Field(..., description="要刪除的點位 ID 列表")
+
+class ModbusPointDeleteResponse(BaseModel):
+    total_requested: int = Field(..., description="請求的總點位數")
+    deleted_count: int = Field(..., description="成功刪除的點位數")
+    failed_count: int = Field(..., description="刪除失敗的點位數")
+    results: List[BatchDeleteResult] = Field(..., description="每個點位的刪除結果")
+
+class ModbusPointDeleteFailedResponse(BaseModel):
+    results: List[BatchDeleteResult] = Field(..., description="每個點位的刪除失敗結果")
 
 class ModbusPointDataResponse(BaseModel):
     point_id: str = Field(..., description="點位 ID")
@@ -178,11 +207,6 @@ class ModbusConfigExportRequest(BaseModel):
     controller_ids: Optional[List[str]] = Field(None, description="要匯出的控制器 ID 列表（空值 = 匯出全部）")
     format: ConfigFormat = Field(ConfigFormat.native, description="匯出格式")
 
-class ModbusConfigImportRequest(BaseModel):
-    format: ConfigFormat = Field(ConfigFormat.native, description="匯入格式")
-    overwrite: bool = Field(False, description="是否覆蓋現有的 point")
-
-# Response examples
 modbus_controller_response_example = {
     "code": 200,
     "message": "Controller created successfully",
@@ -436,5 +460,57 @@ modbus_config_validation_response_example = {
         ],
         "total_controllers": 2,
         "total_points": 20
+    }
+}
+
+modbus_controller_delete_response_example = {
+    "code": 207,
+    "message": "Batch delete: partial success",
+    "data": {
+        "total_requested": 4,
+        "deleted_count": 1,
+        "failed_count": 3,
+        "results": [
+            {"id": "uuid-controller-id-1", "status": "success", "message": "Deleted Successfully"},
+            {"id": "uuid-controller-id-2", "status": "not_found", "message": "Controller not found"},
+            {"id": "uuid-controller-id-3", "status": "error", "message": "Server error"}
+        ]
+    }
+}
+
+modbus_point_delete_response_example = {
+    "code": 207,
+    "message": "Batch delete: partial success",
+    "data": {
+        "total_requested": 4,
+        "deleted_count": 1,
+        "failed_count": 3,
+        "results": [
+            {"id": "uuid-point-id-1", "status": "success", "message": "Deleted Successfully"},
+            {"id": "uuid-point-id-2", "status": "not_found", "message": "Point not found"},
+            {"id": "uuid-point-id-3", "status": "error", "message": "Server error"}
+        ]
+    }
+}
+
+modbus_controller_delete_failed_response_example = {
+    "code": 400,
+    "message": "Failed to delete 3 controllers",
+    "data": {
+        "results": [
+            {"id": "uuid-controller-id-1", "status": "not_found", "message": "Controller not found"},
+            {"id": "uuid-controller-id-2", "status": "error", "message": "Server Error"}
+        ]
+    }
+}
+
+modbus_point_delete_failed_response_example = {
+    "code": 400,
+    "message": "Failed to delete 3 points",
+    "data": {
+        "results": [
+            {"id": "uuid-point-id-1", "status": "not_found", "message": "Not found"},
+            {"id": "uuid-point-id-2", "status": "error", "message": "Server error"}
+        ]
     }
 }

@@ -1,6 +1,6 @@
 import pytest
-from unittest.mock import patch, AsyncMock
 from datetime import datetime
+from unittest.mock import patch, AsyncMock
 
 @pytest.mark.asyncio
 async def test_get_users_success(client):
@@ -188,7 +188,7 @@ async def test_update_user_not_found(client):
         assert response.status_code == 404
 
 @pytest.mark.asyncio
-async def test_delete_user_success(client):
+async def test_delete_users_success(client):
     fake_token = "fake_token"
     fake_user_roles = [{"name": "admin"}]
     fake_role_info = {"attributes": {"admin": ["true"]}}
@@ -198,32 +198,82 @@ async def test_delete_user_success(client):
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_roles_of_user", new_callable=AsyncMock, return_value=fake_user_roles), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_role", new_callable=AsyncMock, return_value=fake_role_info), \
          patch("extensions.keycloak.KeycloakAdmin.a_delete_user", return_value=None):
-        response = await client.delete(
-            "/api/admin/users/user123",
+        payload = {"user_ids": ["user123"]}
+        response = await client.request(
+            "DELETE",
+            "/api/admin/users",
+            json=payload,
             headers={"Authorization": f"Bearer {fake_token}"}
         )
         assert response.status_code == 200
-        assert response.json()["message"] == "User deleted successfully"
+        data = response.json()
+        assert data["code"] == 200
+        assert data["message"] == "All users deleted successfully"
 
 @pytest.mark.asyncio
-async def test_delete_user_not_found(client):
+async def test_delete_users_partial_success(client):
     fake_token = "fake_token"
     fake_user_roles = [{"name": "admin"}]
     fake_role_info = {"attributes": {"admin": ["true"]}}
 
-    def mock_delete_user_error(*args, **kwargs):
-        raise Exception("not found")
+    def mock_delete_user_side_effect(user_id):
+        if user_id == "user123":
+            return None
+        else:
+            raise Exception("User not found")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_roles_of_user", new_callable=AsyncMock, return_value=fake_user_roles), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_role", new_callable=AsyncMock, return_value=fake_role_info), \
-         patch("extensions.keycloak.KeycloakAdmin.a_delete_user", side_effect=mock_delete_user_error):
-        response = await client.delete(
-            "/api/admin/users/nonexistent",
+         patch("extensions.keycloak.KeycloakAdmin.a_delete_user", side_effect=mock_delete_user_side_effect):
+        payload = {"user_ids": ["user123", "nonexistent"]}
+        response = await client.request(
+            "DELETE",
+            "/api/admin/users",
+            json=payload,
             headers={"Authorization": f"Bearer {fake_token}"}
         )
-        assert response.status_code == 404
+        assert response.status_code == 207
+        data = response.json()
+        assert data["code"] == 207
+        assert data["message"] == "Delete users partial success"
+        assert data["data"]["total_requested"] == 2
+        assert data["data"]["deleted_count"] == 1
+        assert data["data"]["failed_count"] == 1
+        assert len(data["data"]["results"]) == 2
+        
+        success_results = [r for r in data["data"]["results"] if r["status"] == "success"]
+        failed_results = [r for r in data["data"]["results"] if r["status"] == "not_found"]
+        assert len(success_results) == 1
+        assert len(failed_results) == 1
+        assert success_results[0]["id"] == "user123"
+        assert failed_results[0]["id"] == "nonexistent"
+
+@pytest.mark.asyncio
+async def test_delete_users_all_failed(client):
+    fake_token = "fake_token"
+    fake_user_roles = [{"name": "admin"}]
+    fake_role_info = {"attributes": {"admin": ["true"]}}
+
+    with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
+         patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
+         patch("extensions.keycloak.KeycloakAdmin.a_get_realm_roles_of_user", new_callable=AsyncMock, return_value=fake_user_roles), \
+         patch("extensions.keycloak.KeycloakAdmin.a_get_realm_role", new_callable=AsyncMock, return_value=fake_role_info), \
+         patch("extensions.keycloak.KeycloakAdmin.a_delete_user", side_effect=Exception("User not found")):
+        payload = {"user_ids": ["nonexistent1", "nonexistent2"]}
+        response = await client.request(
+            "DELETE",
+            "/api/admin/users",
+            json=payload,
+            headers={"Authorization": f"Bearer {fake_token}"}
+        )
+        assert response.status_code == 400
+        data = response.json()
+        assert data["code"] == 400
+        assert data["message"] == "All users failed to delete"
+        assert data["data"]["results"]
+        assert len(data["data"]["results"]) == 2
 
 @pytest.mark.asyncio
 async def test_reset_password_success(client):
