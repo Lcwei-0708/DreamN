@@ -57,8 +57,8 @@ router = APIRouter(tags=["modbus"])
 )
 async def get_controllers(
     db: Annotated[AsyncSession, Depends(get_db)],
-    status: bool = Query(None, description="Filter by controller status (true=connected, false=disconnected)"),
-    name: str = Query(None, description="Search by controller name (partial match)")
+    status: bool = Query(None, description="過濾控制器狀態 (true=連線, false=未連線)"),
+    name: str = Query(None, description="過濾控制器名稱")
 ):
     try:
         data = await get_modbus_controllers(db, status=status, name=name)
@@ -195,7 +195,7 @@ async def delete_controllers(
 async def get_points_by_controller(
     controller_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    point_type: PointType = Query(None, description="Filter by point type (coil/input/holding_register/input_register)")
+    point_type: PointType = Query(None, description="過濾點位類型 (coil/input/holding_register/input_register)")
 ):
     try:
         data = await get_modbus_points_by_controller(controller_id, db, point_type=point_type)
@@ -336,7 +336,7 @@ async def read_controller_points_data(
     controller_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     modbus: Annotated[ModbusManager, Depends(get_modbus)],
-    point_type: PointType = Query(None, description="Filter by point type (coil/input/holding_register/input_register)"),
+    point_type: PointType = Query(None, description="過濾點位類型 (coil/input/holding_register/input_register)"),
     convert: bool = Query(True, description="是否要進行資料轉換（預設為 true）")
 ):
     try:

@@ -34,7 +34,6 @@ router = APIRouter(tags=["admin"])
     "/users",
     response_model=APIResponse[UserPagination],
     summary="Get all users",
-    description="Get all users (only admin can use)",
     responses=parse_responses({
         200: ("Successfully retrieved users", UserPagination),
         404: ("User not found", None)
@@ -46,13 +45,13 @@ async def get_users(
     request: Request,
     token: str = Depends(verify_token),
     db: AsyncSession = Depends(get_db),
-    name: Optional[str] = Query(None, description="User name filter"),
-    status: Optional[str] = Query(None, description="User status filter (multiple values separated by commas, e.g.: true,false)"),
-    role: Optional[str] = Query(None, description="User role filter (multiple values separated by commas, e.g.: admin,manager)"),
-    page: int = Query(1, ge=1, description="Page number (default: 1)"),
-    per_page: int = Query(10, ge=1, le=100, description="Number of users per page (default: 10)"),
-    sort_by: Optional[UserSortBy] = Query(None, description="Sorting field"),
-    desc: bool = Query(False, description="Sorting order (default: false)")
+    name: Optional[str] = Query(None, description="過濾使用者名稱"),
+    status: Optional[str] = Query(None, description="過濾使用者狀態 (多個值以逗號分隔，範例：true,false)"),
+    role: Optional[str] = Query(None, description="過濾使用者角色 (多個值以逗號分隔，範例：admin,manager)"),
+    page: int = Query(1, ge=1, description="頁數 (預設：1)"),
+    per_page: int = Query(10, ge=1, le=100, description="每頁使用者數量 (預設：10)"),
+    sort_by: Optional[UserSortBy] = Query(None, description="排序欄位"),
+    desc: bool = Query(False, description="排序順序 (預設：false)")
 ):
     try:
         data = await get_all_users(
@@ -76,7 +75,6 @@ async def get_users(
     response_model=APIResponse[CreateUserResponse],
     response_model_exclude_none=True,
     summary="Create new user",
-    description="Create new user (only admin can use)",
     responses=parse_responses({
         200: ("User created successfully", CreateUserResponse),
         409: ("Email already exists", None)
@@ -98,7 +96,6 @@ async def create_new_user(payload: CreateUserRequest, request: Request, token: s
     response_model=APIResponse[None],
     response_model_exclude_none=True,
     summary="Update user info",
-    description="Update user info (only admin can use)",
     responses=parse_responses({
         200: ("User updated successfully", None),
         404: ("User not found", None),
@@ -123,7 +120,6 @@ async def update_user_info(user_id: str, payload: UpdateUserRequest, request: Re
     response_model=APIResponse[Union[None, DeleteUsersResponse, DeleteUsersFailedResponse]],
     response_model_exclude_none=True,
     summary="Delete users",
-    description="Delete users (only admin can use)",
     responses=parse_responses({
         200: ("All users deleted successfully", None),
         207: ("Delete users partial success", DeleteUsersResponse, delete_users_response_example),
@@ -165,7 +161,6 @@ async def delete_users_batch(
     response_model=APIResponse[None],
     response_model_exclude_none=True,
     summary="Reset user password",
-    description="Reset user password (only admin can use)",
     responses=parse_responses({
         200: ("Password reset successfully", None),
         404: ("User not found", None)
@@ -186,7 +181,6 @@ async def reset_password(user_id: str, payload: ResetPasswordRequest, request: R
     "/roles",
     response_model=APIResponse[RoleList],
     summary="Get all custom roles",
-    description="Get all custom roles (only admin can use)",
     responses=parse_responses({
         200: ("Successfully retrieved roles", RoleList),
         404: ("Role not found", None)
@@ -208,7 +202,6 @@ async def get_roles(request: Request, token: str = Depends(verify_token)):
     response_model=APIResponse[CreateRoleResponse],
     response_model_exclude_none=True,
     summary="Create new role",
-    description="Create new role (only admin can use)",
     responses=parse_responses({
         200: ("Role created successfully", CreateRoleResponse),
         409: ("Role name already exists", None)
@@ -230,7 +223,6 @@ async def create_new_role(payload: CreateRoleRequest, request: Request, token: s
     response_model=APIResponse[None],
     response_model_exclude_none=True,
     summary="Update role info",
-    description="Update role info (only admin can use)",
     responses=parse_responses({
         200: ("Role updated successfully", None),
         404: ("Role not found", None)
@@ -252,7 +244,6 @@ async def update_role_info(role_name: str, payload: UpdateRoleRequest, request: 
     response_model=APIResponse[None],
     response_model_exclude_none=True,
     summary="Update role attributes",
-    description="Update role attributes (only admin can use)",
     responses=parse_responses({
         200: ("Role attributes updated successfully", None),
         404: ("Role not found", None)
@@ -274,7 +265,6 @@ async def update_role_attributes_api(role_name: str, payload: RoleAttributesUpda
     response_model=APIResponse[None],
     response_model_exclude_none=True,
     summary="Delete role",
-    description="Delete role (only admin can use)",
     responses=parse_responses({
         200: ("Role deleted successfully", None),
         404: ("Role not found", None)
