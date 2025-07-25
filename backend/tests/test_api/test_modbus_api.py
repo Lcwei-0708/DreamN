@@ -1,6 +1,9 @@
 import json
 import pytest
-from unittest.mock import AsyncMock,  Mock
+import io
+import os
+import shutil
+from unittest.mock import AsyncMock, Mock, patch
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.modbus_controller import ModbusController
@@ -299,7 +302,7 @@ class TestModbusPointAPI:
         await test_db_session.commit()
         
         payload = {
-            "controller_id": controller.id,
+            "controller_id": str(controller.id),
             "points": [
                 {
                     "name": "Temperature 1",
@@ -330,37 +333,38 @@ class TestModbusPointAPI:
             ]
         }
         
-        response = await client.post("/api/modbus/points/batch", json=payload)
+        response = await client.post("/api/modbus/points", json=payload)
         
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 200
-        assert data["data"]["created_count"] == 2
-        assert len(data["data"]["created_points"]) == 2
-        assert data["data"]["created_points"][0]["name"] == "Temperature 1"
-        assert data["data"]["created_points"][1]["name"] == "Pressure 1"
-    
+        assert data["message"] == "All points created successfully"
+        assert len(data["data"]["results"]) == 2
+        assert all(result["status"] == "success" for result in data["data"]["results"])
+
     @pytest.mark.asyncio
     async def test_create_points_batch_controller_not_found(self, client: AsyncClient, test_db_session: AsyncSession):
         payload = {
-            "controller_id": "non-existent-controller",
+            "controller_id": "non-existent-id",
             "points": [
                 {
-                    "name": "Test Point",
+                    "name": "Temperature 1",
                     "type": "holding_register",
                     "data_type": "uint16",
-                    "address": 40001
+                    "address": 40001,
+                    "len": 1,
+                    "unit_id": 1
                 }
             ]
         }
         
-        response = await client.post("/api/modbus/points/batch", json=payload)
+        response = await client.post("/api/modbus/points", json=payload)
         
         assert response.status_code == 404
         data = response.json()
-        error_message = data.get("detail") or data.get("message", "")
-        assert "Controller non-existent-controller not found" in error_message
-    
+        assert data["code"] == 404
+        assert "Controller non-existent-id not found" in data["message"]
+
     @pytest.mark.asyncio
     async def test_get_points_by_controller(self, client: AsyncClient, test_db_session: AsyncSession):
         controller = ModbusController(
@@ -861,48 +865,52 @@ class TestModbusConfigAPI:
         test_db_session.add(controller)
         await test_db_session.commit()
         
-        point = ModbusPoint(
+        # Create some points for the controller
+        point1 = ModbusPoint(
             controller_id=controller.id,
             name="Temperature 1",
             type="holding_register",
             data_type="uint16",
             address=40001,
             len=1,
-            unit_id=1,
-            formula="x * 0.1",
-            unit="°C"
+            unit_id=1
         )
-        test_db_session.add(point)
+        point2 = ModbusPoint(
+            controller_id=controller.id,
+            name="Pressure 1",
+            type="input_register",
+            data_type="uint16",
+            address=30001,
+            len=1,
+            unit_id=1
+        )
+        test_db_session.add(point1)
+        test_db_session.add(point2)
         await test_db_session.commit()
         
-        # Use POST endpoint with payload
-        payload = {
-            "controller_ids": [controller.id],
-            "format": "native"
-        }
-        
-        response = await client.post("/api/modbus/controllers/export", json=payload)
+        # Test export with Form data
+        response = await client.post(
+            f"/api/modbus/export/{controller.id}",
+            data={"export_format": "native"}
+        )
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/json"
         assert "attachment" in response.headers["content-disposition"]
-    
+
     @pytest.mark.asyncio
     async def test_export_controller_config_not_found(self, client: AsyncClient, test_db_session: AsyncSession):
-        # Use POST endpoint with payload
-        payload = {
-            "controller_ids": ["non-existent-id"],
-            "format": "native"
-        }
+        # Test export with non-existent controller ID
+        response = await client.post(
+            "/api/modbus/export/non-existent-id",
+            data={"export_format": "native"}
+        )
         
-        response = await client.post("/api/modbus/controllers/export", json=payload)
-        
-        # According to error logs, actual return is 400 instead of 404
-        assert response.status_code == 400
+        assert response.status_code == 404
         data = response.json()
-        error_message = data.get("detail") or data.get("message", "")
-        assert "Controller not found" in error_message or "Export failed" in error_message
-    
+        assert data["code"] == 404
+        assert "Controller not found" in data["message"]
+
     @pytest.mark.asyncio
     async def test_import_config_success(self, client: AsyncClient, test_db_session: AsyncSession):
         config_data = {
@@ -924,124 +932,53 @@ class TestModbusConfigAPI:
             ]
         }
         
-        import tempfile
-        import os
+        # Use BytesIO instead of actual file
+        config_json = json.dumps(config_data).encode('utf-8')
+        config_file = io.BytesIO(config_json)
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            temp_file_path = f.name
+        files = {"file": ("config.json", config_file, "application/json")}
+        data = {
+            "config_format": "native",
+            "duplicate_handling": "skip_controller"
+        }
         
-        try:
-            with open(temp_file_path, 'rb') as f:
-                files = {"file": ("config.json", f, "application/json")}
-                data = {"format": "native"}
-                
-                response = await client.post("/api/modbus/config/import", files=files, data=data)
-                
-                assert response.status_code == 200
-                data = response.json()
-                assert data["code"] == 200
-                assert "Successfully imported 1 controllers" in data["message"]
-                assert len(data["data"]["imported_controllers"]) == 1
-                assert data["data"]["total_points"] == 1
-        finally:
-            os.unlink(temp_file_path)
-    
+        response = await client.post("/api/modbus/import/controller", files=files, data=data)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 200
+        assert data["message"] == "Controller imported successfully"
+
     @pytest.mark.asyncio
     async def test_import_config_invalid_file(self, client: AsyncClient, test_db_session: AsyncSession):
-        import tempfile
-        import os
+        # Use BytesIO with invalid JSON content
+        invalid_json = "invalid json content".encode('utf-8')
+        config_file = io.BytesIO(invalid_json)
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            f.write("invalid json content")
-            temp_file_path = f.name
-        
-        try:
-            with open(temp_file_path, 'rb') as f:
-                files = {"file": ("config.json", f, "application/json")}
-                data = {"format": "native"}
-                
-                response = await client.post("/api/modbus/config/import", files=files, data=data)
-                
-                assert response.status_code in [400, 500]
-                data = response.json()
-                error_message = data.get("detail") or data.get("message", "")
-                assert any(keyword in str(error_message).lower() for keyword in ["invalid", "json", "decode", "format", "error"])
-        finally:
-            os.unlink(temp_file_path)
-    
-    @pytest.mark.asyncio
-    async def test_validate_config_success(self, client: AsyncClient, test_db_session: AsyncSession):
-        config_data = {
-            "controller": {
-                "name": "Valid Controller",
-                "host": "192.168.1.100",
-                "port": 502,
-                "timeout": 10
-            },
-            "points": [
-                {
-                    "name": "Valid Point",
-                    "type": "holding_register",
-                    "data_type": "uint16",
-                    "address": 40001,
-                    "len": 1,
-                    "unit_id": 1
-                }
-            ]
+        files = {"file": ("config.json", config_file, "application/json")}
+        data = {
+            "config_format": "native",
+            "duplicate_handling": "skip_controller"
         }
         
-        import tempfile
-        import os
+        response = await client.post("/api/modbus/import/controller", files=files, data=data)
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            temp_file_path = f.name
+        assert response.status_code in [400, 415, 500]
+
+    @pytest.fixture(autouse=True)
+    def cleanup_exports_directory(self):
+        """Clean up exports directory before and after tests"""
+        exports_dir = "exports"
         
-        try:
-            with open(temp_file_path, 'rb') as f:
-                files = {"file": ("config.json", f, "application/json")}
-                data = {"format": "native"}
-                
-                response = await client.post("/api/modbus/config/validate", files=files, data=data)
-                
-                assert response.status_code == 200
-                data = response.json()
-                assert data["code"] == 200
-                assert data["message"] == "Configuration validation completed"
-                assert data["data"]["is_valid"] is True
-        finally:
-            os.unlink(temp_file_path)
-    
-    @pytest.mark.asyncio
-    async def test_validate_config_invalid_format(self, client: AsyncClient, test_db_session: AsyncSession):
-        import tempfile
-        import os
+        # Clean up before test
+        if os.path.exists(exports_dir):
+            shutil.rmtree(exports_dir)
         
-        config_data = {
-            "invalid_format": "data"
-        }
+        yield
         
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(config_data, f)
-            temp_file_path = f.name
-        
-        try:
-            with open(temp_file_path, 'rb') as f:
-                files = {"file": ("config.json", f, "application/json")}
-                data = {"format": "native"}
-                
-                response = await client.post("/api/modbus/config/validate", files=files, data=data)
-                
-                assert response.status_code in [200, 422]
-                data = response.json()
-                if response.status_code == 422:
-                    error_message = data.get("detail") or data.get("message", "")
-                    assert "Format mismatch" in error_message
-                else:
-                    assert data["data"]["is_valid"] is False
-        finally:
-            os.unlink(temp_file_path)
+        # Clean up after test
+        if os.path.exists(exports_dir):
+            shutil.rmtree(exports_dir)
 
 
 class TestModbusErrorHandling:
@@ -1059,20 +996,27 @@ class TestModbusErrorHandling:
         await test_db_session.commit()
         
         payload = {
-            "controller_id": controller.id,
+            "controller_id": str(controller.id),
             "points": [
                 {
                     "name": "Invalid Point",
                     "type": "invalid_type",
                     "data_type": "uint16",
-                    "address": 40001
+                    "address": 40001,
+                    "len": 1,
+                    "unit_id": 1
                 }
             ]
         }
         
-        response = await client.post("/api/modbus/points/batch", json=payload)
+        response = await client.post("/api/modbus/points", json=payload)
         
         assert response.status_code == 422
+        data = response.json()
+        if "detail" in data:
+            assert "validation error" in data["detail"][0]["msg"].lower()
+        else:
+            assert "validation" in str(data).lower() or "error" in str(data).lower()
     
     @pytest.mark.asyncio
     async def test_missing_required_fields(self, client: AsyncClient, test_db_session: AsyncSession):

@@ -1,7 +1,8 @@
 import json
-from typing import Annotated, List, Optional, Dict, Any, Union
+from typing import Annotated, Union, Dict, Any
 from core.dependencies import get_db
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+import io
 from sqlalchemy.ext.asyncio import AsyncSession
 from extensions.modbus import get_modbus, ModbusManager
 from utils.response import APIResponse, parse_responses, common_responses
@@ -10,40 +11,61 @@ from utils.custom_exception import (
     ModbusConnectionException, ModbusControllerNotFoundException,
     ModbusPointNotFoundException, ModbusReadException, ModbusValidationException,
     ModbusWriteException, ModbusRangeValidationException,
-    ModbusConfigException, ModbusConfigFormatMismatchException,
-    ModbusControllerDuplicateException, ModbusPointDuplicateException,
-    ServerException
+    ModbusConfigException, ModbusConfigFormatException,
+    ModbusControllerDuplicateException, ModbusPointDuplicateException, ServerException
 )
 from .services import (
     create_modbus_controller, get_modbus_controllers, update_modbus_controller, delete_modbus_controllers,
     test_modbus_controller, create_modbus_points_batch, get_modbus_points_by_controller,
     update_modbus_point, delete_modbus_points, read_modbus_controller_points_data,
     write_modbus_point_data,
-    export_modbus_controller_config_file, import_modbus_configuration_from_file,
-    validate_modbus_configuration_from_file
+    export_modbus_controller_config_data, import_modbus_configuration_from_file,
+    export_modbus_controller_config_data
 )
 from .schema import (
     ModbusControllerCreateRequest, ModbusControllerUpdateRequest, ModbusControllerResponse,
     ModbusControllerListResponse, ModbusPointBatchCreateRequest, ModbusPointUpdateRequest,
-    ModbusPointResponse, ModbusPointListResponse, ModbusPointBatchCreateResponse,
+    ModbusPointResponse, ModbusPointListResponse,
     ModbusControllerValuesResponse, ModbusPointWriteRequest, ModbusPointWriteResponse,
-    ModbusConfigImportResponse, ModbusConfigValidationResponse, ModbusConfigExportRequest,
     modbus_controller_response_example, modbus_controller_list_response_example,
     modbus_point_response_example, modbus_point_list_response_example,
     modbus_multi_point_data_response_example,
     modbus_point_write_response_example,
-    modbus_point_batch_create_response_example,
-    modbus_config_import_response_example,
+    modbus_point_batch_create_failed_response_example,
     ModbusControllerDeleteRequest, ModbusPointDeleteRequest,
     ModbusControllerDeleteResponse, ModbusPointDeleteResponse,
     ModbusControllerDeleteFailedResponse, ModbusPointDeleteFailedResponse,
     modbus_controller_delete_response_example, modbus_point_delete_response_example,
     modbus_controller_delete_failed_response_example, modbus_point_delete_failed_response_example,
-    PointType, ConfigFormat
+    ModbusPointBatchCreateSimpleResponse, ModbusConfigImportSimpleResponse,
+    modbus_point_batch_create_simple_response_example, modbus_point_batch_create_partial_response_example,
+    modbus_config_import_simple_response_example, modbus_config_import_partial_response_example,
+    modbus_config_import_failed_response_example,
+    PointType, ConfigFormat, ImportMode
 )
 
 router = APIRouter(tags=["modbus"])
 
+@router.get(
+    "/controllers",
+    response_model=APIResponse[ModbusControllerListResponse],
+    response_model_exclude_unset=True,
+    summary="Get Modbus controller list",
+    responses=parse_responses({
+        200: ("Get controller list successfully", ModbusControllerListResponse, modbus_controller_list_response_example)
+    }, default=common_responses)
+)
+async def get_controllers(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status: bool = Query(None, description="Filter by controller status (true=connected, false=disconnected)"),
+    name: str = Query(None, description="Search by controller name (partial match)")
+):
+    try:
+        data = await get_modbus_controllers(db, status=status, name=name)
+        return APIResponse(code=200, message="Get controller list successfully", data=data)
+    except Exception:
+        raise HTTPException(status_code=500)
+    
 @router.post(
     "/controllers",
     response_model=APIResponse[ModbusControllerResponse],
@@ -66,24 +88,26 @@ async def create_controller(
         raise HTTPException(status_code=409, detail="Controller already exists")
     except Exception:
         raise HTTPException(status_code=500)
-
-@router.get(
-    "/controllers",
-    response_model=APIResponse[ModbusControllerListResponse],
+    
+@router.post(
+    "/controllers/test",
+    response_model=APIResponse[dict],
     response_model_exclude_unset=True,
-    summary="Get Modbus controller list",
+    summary="Test Modbus controller connection (do not save to database)",
     responses=parse_responses({
-        200: ("Get controller list successfully", ModbusControllerListResponse, modbus_controller_list_response_example)
+        200: ("Controller test successful", dict),
+        400: ("Controller test failed", None)
     }, default=common_responses)
 )
-async def get_controllers(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    status: bool = Query(None, description="Filter by controller status (true=connected, false=disconnected)"),
-    name: str = Query(None, description="Search by controller name (partial match)")
+async def test_controller(
+    payload: ModbusControllerCreateRequest,
+    modbus: Annotated[ModbusManager, Depends(get_modbus)]
 ):
     try:
-        data = await get_modbus_controllers(db, status=status, name=name)
-        return APIResponse(code=200, message="Get controller list successfully", data=data)
+        result = await test_modbus_controller(payload, modbus)
+        return APIResponse(code=200, message="Controller test successful", data=result)
+    except ModbusConnectionException:
+        raise HTTPException(status_code=400, detail="Controller test failed")
     except Exception:
         raise HTTPException(status_code=500)
 
@@ -158,56 +182,6 @@ async def delete_controllers(
     except Exception:
         raise HTTPException(status_code=500)
 
-@router.post(
-    "/controllers/test",
-    response_model=APIResponse[dict],
-    response_model_exclude_unset=True,
-    summary="Test Modbus controller connection (do not save to database)",
-    responses=parse_responses({
-        200: ("Controller test successful", dict),
-        400: ("Controller test failed", None)
-    }, default=common_responses)
-)
-async def test_controller(
-    payload: ModbusControllerCreateRequest,
-    modbus: Annotated[ModbusManager, Depends(get_modbus)]
-):
-    try:
-        result = await test_modbus_controller(payload, modbus)
-        return APIResponse(code=200, message="Controller test successful", data=result)
-    except ModbusConnectionException:
-        raise HTTPException(status_code=400, detail="Controller test failed")
-    except Exception:
-        raise HTTPException(status_code=500)
-
-@router.post(
-    "/points/batch",
-    response_model=APIResponse[ModbusPointBatchCreateResponse],
-    response_model_exclude_unset=True,
-    summary="Create multiple Modbus points for a controller (duplicates will be skipped)",
-    responses=parse_responses({
-        200: ("Points created successfully", ModbusPointBatchCreateResponse, modbus_point_batch_create_response_example),
-        404: ("Controller not found", None)
-    }, default=common_responses)
-)
-async def create_points_batch(
-    request: ModbusPointBatchCreateRequest,
-    db: Annotated[AsyncSession, Depends(get_db)]
-):
-    """Create multiple Modbus points for a controller. Duplicate points (same controller_id, address, type, unit_id) will be skipped."""
-    try:
-        result = await create_modbus_points_batch(request, db)
-        
-        message = f"Successfully created {result['created_count']} points"
-        if result['skipped_count'] > 0:
-            message += f", skipped {result['skipped_count']} duplicate points"
-        
-        return APIResponse(code=200, message=message, data=result)
-    except ModbusControllerNotFoundException as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=500)
-
 @router.get(
     "/controllers/{controller_id}/points",
     response_model=APIResponse[ModbusPointListResponse],
@@ -228,6 +202,50 @@ async def get_points_by_controller(
         return APIResponse(code=200, message="Get point list successfully", data=data)
     except ModbusControllerNotFoundException:
         raise HTTPException(status_code=404, detail="Controller not found")
+    except Exception:
+        raise HTTPException(status_code=500)
+
+@router.post(
+    "/points",
+    response_model=APIResponse[ModbusPointBatchCreateSimpleResponse],
+    response_model_exclude_unset=True,
+    summary="Create multiple Modbus points for a controller",
+    responses=parse_responses({
+        200: ("All points created successfully", ModbusPointBatchCreateSimpleResponse, modbus_point_batch_create_simple_response_example),
+        207: ("Points created with partial success", ModbusPointBatchCreateSimpleResponse, modbus_point_batch_create_partial_response_example),
+        400: ("All points failed to create", ModbusPointBatchCreateSimpleResponse, modbus_point_batch_create_failed_response_example),
+        404: ("Controller not found", None)
+    }, default=common_responses)
+)
+async def create_points_batch(
+    request: ModbusPointBatchCreateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Create multiple Modbus points for a controller"""
+    try:
+        result = await create_modbus_points_batch(request, db)
+        
+        if result.failed_count is None and result.skipped_count is None:
+            status_code = 200
+            message = f"All points created successfully"
+        elif result.success_count == 0:
+            status_code = 400
+            message = f"All points failed to create"
+        else:
+            status_code = 207
+            message = f"Points created with partial success"
+        
+        response_data = APIResponse(code=status_code, message=message, data=result)
+        
+        if status_code != 200:
+            raise HTTPException(status_code=status_code, detail=response_data.dict(exclude_none=True))
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except ModbusControllerNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception:
         raise HTTPException(status_code=500)
 
@@ -367,109 +385,107 @@ async def write_point_data(
         raise HTTPException(status_code=500)
 
 @router.post(
-    "/config/import",
-    response_model=APIResponse[ModbusConfigImportResponse],
+    "/import/controller",
+    response_model=APIResponse[Union[ModbusConfigImportSimpleResponse]],
     response_model_exclude_unset=True,
-    summary="Import Modbus Configuration",
+    summary="Import Modbus Controller Configuration",
     responses=parse_responses({
-        200: ("Configuration imported successfully", ModbusConfigImportResponse, modbus_config_import_response_example),
-        400: ("Import failed / Invalid JSON format / Only JSON files are supported", None),
-        422: ("Configuration format does not match the selected format", None)
+        200: ("Controller imported successfully", ModbusConfigImportSimpleResponse, modbus_config_import_simple_response_example),
+        207: ("Controller imported with partial success", ModbusConfigImportSimpleResponse, modbus_config_import_partial_response_example),
+        400: ("Controller failed to import / All points failed to imports", ModbusConfigImportSimpleResponse, modbus_config_import_failed_response_example),
+        409: ("Controller already exists / All points already exists", ModbusConfigImportSimpleResponse, modbus_config_import_simple_response_example),
+        415: ("Unsupported configuration format", None)
     }, default=common_responses)
 )
 async def import_config(
     db: Annotated[AsyncSession, Depends(get_db)],
-    file: UploadFile = File(..., description="配置文件 (JSON 格式)"),
-    format: ConfigFormat = Form(ConfigFormat.native, description="導入格式"),
-    overwrite: bool = Form(False, description="是否覆蓋現有的 controller 和 point")
+    file: UploadFile = File(..., description="Modbus 配置文件 (JSON 格式)"),
+    config_format: ConfigFormat = Form(ConfigFormat.native, description="配置文件格式 (native: 原生格式, thingsboard: ThingsBoard 格式)"),
+    duplicate_handling: ImportMode = Form(ImportMode.SKIP_CONTROLLER, description="重複項目處理方式 (skip_controller: 跳過整個控制器, overwrite_controller: 覆蓋整個控制器, skip_duplicates_point: 跳過重複點位, overwrite_duplicates_point: 覆蓋重複點位)")
 ):
-    """Import configuration from file"""
+    """
+    Import Modbus controller configuration from JSON file
+    """
     try:
         if not file.filename.endswith('.json'):
-            raise HTTPException(status_code=400, detail="Only JSON files are supported")
+            raise ModbusConfigFormatException("Unsupported configuration format")
         
         content = await file.read()
         try:
             config = json.loads(content.decode('utf-8'))
         except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON format")
+            raise ModbusConfigFormatException("Invalid JSON format")
         
-        result = await import_modbus_configuration_from_file(config, format, db, overwrite)
+        result = await import_modbus_configuration_from_file(config, config_format, db, duplicate_handling)
         
-        message = f"Successfully imported {result.imported_count} controllers"
-        if result.skipped_count > 0:
-            message += f", skipped {result.skipped_count} duplicate controllers"
+        if result._status == "success":
+            status_code = 200
+            message = "Controller imported successfully"
+        elif result._status == "skipped_controller":
+            status_code = 409
+            message = "Controller already exists"
+        elif result._status == "skipped_points":
+            status_code = 409
+            message = "All points already exists"
+        elif result._status == "partial_success":
+            status_code = 207
+            message = "Controller imported with partial success"
+        elif result._status == "controller_failed":
+            status_code = 400
+            message = "Controller failed to import"
+        elif result._status == "points_failed":
+            status_code = 400
+            message = "All points failed to imports"
+        else:
+            raise ServerException(message="Import failed", details=result)
         
-        return APIResponse(code=200, message=message, data=result)
+        response_data = APIResponse(code=status_code, message=message, data=result)
+        
+        if status_code != 200:
+            raise HTTPException(status_code=status_code, detail=response_data.dict(exclude_none=True))        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except ModbusConfigFormatException:
+        raise HTTPException(status_code=415, detail="Unsupported configuration format")
     except ModbusConfigException:
-        raise HTTPException(status_code=400, detail="Import failed")
-    except ModbusConfigFormatMismatchException:
-        raise HTTPException(status_code=422, detail="Configuration format does not match the selected format")
+        raise HTTPException(status_code=400, detail="Controller failed to import")
     except Exception:
         raise HTTPException(status_code=500)
 
 @router.post(
-    "/controllers/export",
+    "/export/{controller_id}",
     summary="Export Modbus Controller Configuration",
     responses=parse_responses({
         200: ("Configuration exported successfully", None),
-        400: ("Export failed", None),
         404: ("Controller not found", None)
     }, default=common_responses)
 )
 async def export_controller_config(
-    payload: ModbusConfigExportRequest,
-    db: Annotated[AsyncSession, Depends(get_db)]
+    controller_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    export_format: ConfigFormat = Form(ConfigFormat.native, description="匯出格式 (native: 原生格式, thingsboard: ThingsBoard 格式)")
 ):
-    """Export controller configuration as file"""
+    """
+    Export Modbus controller configuration to JSON file (no server file storage)
+    """
     try:
-        result = await export_modbus_controller_config_file(payload.controller_ids, payload.format, db)
+        result = await export_modbus_controller_config_data(controller_id, export_format, db)
         
-        # Return file download
-        return FileResponse(
-            path=result["file_path"],
-            filename=result["filename"],
+        # Convert config to JSON string
+        json_content = json.dumps(result["config_data"], indent=2, ensure_ascii=False)
+        
+        # Create streaming response
+        return StreamingResponse(
+            iter([json_content]),
             media_type="application/json",
             headers={
                 "Content-Disposition": f"attachment; filename={result['filename']}"
             }
         )
-    except ModbusConfigException:
-        raise HTTPException(status_code=400, detail="Export failed")
+        
     except ModbusControllerNotFoundException:
         raise HTTPException(status_code=404, detail="Controller not found")
-    except Exception:
-        raise HTTPException(status_code=500)
-    
-@router.post(
-    "/config/validate",
-    response_model=APIResponse[ModbusConfigValidationResponse],
-    response_model_exclude_unset=True,
-    summary="Validate Modbus Configuration",
-    responses=parse_responses({
-        200: ("Configuration validation completed", ModbusConfigValidationResponse),
-        400: ("Invalid JSON format / Only JSON files are supported", None),
-        422: ("Configuration format does not match the selected format", None)
-    }, default=common_responses)
-)
-async def validate_config(
-    file: UploadFile = File(..., description="配置文件 (JSON 格式)"),
-    format: ConfigFormat = Form(ConfigFormat.native, description="導入格式")
-):
-    """Validate configuration file"""
-    try:
-        if not file.filename.endswith('.json'):
-            raise HTTPException(status_code=400, detail="Only JSON files are supported")
-        
-        content = await file.read()
-        try:
-            config = json.loads(content.decode('utf-8'))
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON format")
-        
-        result = await validate_modbus_configuration_from_file(config, format)
-        return APIResponse(code=200, message="Configuration validation completed", data=result)
-    except ModbusConfigFormatMismatchException:
-        raise HTTPException(status_code=422, detail="Configuration format does not match the selected format")
     except Exception:
         raise HTTPException(status_code=500)

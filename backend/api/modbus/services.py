@@ -1,8 +1,7 @@
-import logging
-import json
-import tempfile
 import os
-from typing import Dict, Any, List, Union, Optional
+import json
+import logging
+from typing import Dict, Any
 from datetime import datetime
 from extensions.modbus import ModbusManager
 from models.modbus_point import ModbusPoint
@@ -11,26 +10,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.modbus_controller import ModbusController
 from .schema import (
     ModbusControllerCreateRequest, ModbusControllerUpdateRequest, ModbusControllerResponse,
-    ModbusControllerListResponse, ModbusPointBatchCreateRequest, ModbusPointUpdateRequest,
-    ModbusPointResponse, ModbusPointListResponse, ModbusPointDataResponse, 
-    ModbusPointValueResponse, ModbusControllerValuesResponse,
+    ModbusControllerListResponse, ModbusControllerDeleteRequest, ModbusControllerDeleteResponse,
+    ModbusPointBatchCreateRequest, ModbusPointUpdateRequest, ModbusPointResponse, ModbusPointListResponse,
+    ModbusPointDeleteRequest, ModbusPointDeleteResponse, ModbusPointDataResponse, ModbusPointValueResponse,
     ModbusPointWriteRequest, ModbusPointWriteResponse,
-    ModbusConfigImportResponse, ModbusConfigValidationResponse,
-    ConfigFormat, ModbusControllerImportInfo, ModbusControllerValidationInfo,
-    ModbusControllerSkipInfo, ModbusControllerDeleteRequest, ModbusPointDeleteRequest,
-    ModbusControllerDeleteResponse, ModbusPointDeleteResponse,
-    ModbusControllerDeleteResponse, ModbusPointDeleteResponse
+    ModbusPointBatchCreateSimpleResponse, ModbusPointBatchCreateResult,
+    ModbusControllerValuesResponse,
+    ModbusConfigImportSimpleResponse, ModbusPointImportResult,
+    ConfigFormat, ImportMode
 )
 from utils.custom_exception import (
     ServerException, ModbusConnectionException, ModbusControllerNotFoundException,
     ModbusPointNotFoundException, ModbusReadException, ModbusValidationException, 
     ModbusWriteException, ModbusRangeValidationException, ModbusConfigException,
-    ModbusConfigFormatMismatchException, ModbusControllerDuplicateException,
-    ModbusPointDuplicateException
+    ModbusControllerDuplicateException, ModbusPointDuplicateException, ModbusConfigFormatException
 )
 from utils.modbus_config_manager import (
-    ModbusConfigManager, ConfigFormat,
-    export_modbus_config, import_modbus_config, validate_modbus_config
+    ModbusConfigManager, export_modbus_config
 )
 
 logger = logging.getLogger(__name__)
@@ -329,7 +325,7 @@ async def test_modbus_controller(request: ModbusControllerCreateRequest, modbus:
 async def create_modbus_points_batch(
     request: ModbusPointBatchCreateRequest, 
     db: AsyncSession
-) -> Dict[str, Any]:
+) -> ModbusPointBatchCreateSimpleResponse:
     """Create multiple Modbus points for a controller"""
     try:
         # Verify controller exists
@@ -339,80 +335,90 @@ async def create_modbus_points_batch(
         if not controller_result.scalar_one_or_none():
             raise ModbusControllerNotFoundException(f"Controller {request.controller_id} not found")
         
-        created_points = []
-        skipped_points = []
+        results = []
+        success_count = 0
+        skipped_count = 0
+        failed_count = 0
         
         for point_request in request.points:
-            # Check for existing point with same key fields
-            existing_point = await db.execute(
-                select(ModbusPoint).where(
-                    ModbusPoint.controller_id == request.controller_id,
-                    ModbusPoint.address == point_request.address,
-                    ModbusPoint.type == point_request.type,
-                    ModbusPoint.unit_id == point_request.unit_id
-                )
-            )
-            
-            if existing_point.scalar_one_or_none():
-                # Skip duplicate point
-                skipped_points.append({
-                    "name": point_request.name,
-                    "address": point_request.address,
-                    "type": point_request.type,
-                    "unit_id": point_request.unit_id,
-                    "reason": "Point already exists"
-                })
-            else:
-                # Create new point
-                point = ModbusPoint(
-                    controller_id=request.controller_id,
-                    name=point_request.name,
-                    description=point_request.description,
-                    type=point_request.type,
-                    data_type=point_request.data_type,
-                    address=point_request.address,
-                    len=point_request.len,
-                    unit_id=point_request.unit_id,
-                    formula=point_request.formula,
-                    unit=point_request.unit,
-                    min_value=point_request.min_value,
-                    max_value=point_request.max_value
+            try:
+                # Check for existing point with same key fields
+                existing_point = await db.execute(
+                    select(ModbusPoint).where(
+                        ModbusPoint.controller_id == request.controller_id,
+                        ModbusPoint.address == point_request.address,
+                        ModbusPoint.type == point_request.type,
+                        ModbusPoint.unit_id == point_request.unit_id
+                    )
                 )
                 
-                db.add(point)
-                await db.commit()
-                await db.refresh(point)
-                created_points.append(point)
+                if existing_point.scalar_one_or_none():
+                    # Skip duplicate point
+                    results.append(ModbusPointBatchCreateResult(
+                        point_id=None,
+                        name=point_request.name,
+                        status="skipped",
+                        message="Point already exists"
+                    ))
+                    skipped_count += 1
+                else:
+                    # Create new point
+                    point = ModbusPoint(
+                        controller_id=request.controller_id,
+                        name=point_request.name,
+                        description=point_request.description,
+                        type=point_request.type,
+                        data_type=point_request.data_type,
+                        address=point_request.address,
+                        len=point_request.len,
+                        unit_id=point_request.unit_id,
+                        formula=point_request.formula,
+                        unit=point_request.unit,
+                        min_value=point_request.min_value,
+                        max_value=point_request.max_value
+                    )
+                    
+                    db.add(point)
+                    await db.commit()
+                    await db.refresh(point)
+                    
+                    results.append(ModbusPointBatchCreateResult(
+                        point_id=point.id,
+                        name=point.name,
+                        status="success",
+                        message="Created successfully"
+                    ))
+                    success_count += 1
+                    
+            except Exception as e:
+                results.append(ModbusPointBatchCreateResult(
+                    point_id=None,
+                    name=point_request.name,
+                    status="failed",
+                    message=str(e)
+                ))
+                failed_count += 1
         
-        # Convert to ModbusPointResponse objects
-        point_responses = [
-            ModbusPointResponse(
-                id=point.id,
-                controller_id=point.controller_id,
-                name=point.name,
-                description=point.description,
-                type=point.type,
-                data_type=point.data_type,
-                address=point.address,
-                len=point.len,
-                unit_id=point.unit_id,
-                formula=point.formula,
-                unit=point.unit,
-                min_value=point.min_value,
-                max_value=point.max_value,
-                created_at=point.created_at.isoformat(),
-                updated_at=point.updated_at.isoformat()
+        if failed_count == 0 and skipped_count == 0:
+            return ModbusPointBatchCreateSimpleResponse(
+                results=results
             )
-            for point in created_points
-        ]
-        
-        return {
-            "created_points": point_responses,
-            "skipped_points": skipped_points,
-            "total_requested": len(request.points),
-            "created_count": len(created_points),
-            "skipped_count": len(skipped_points)
-        }
+        elif success_count == 0:
+            return ModbusPointBatchCreateSimpleResponse(
+                results=results,
+                total_requested=len(request.points),
+                success_count=success_count,
+                skipped_count=skipped_count,
+                failed_count=failed_count
+            )
+        else:
+            return ModbusPointBatchCreateSimpleResponse(
+                results=results,
+                total_requested=len(request.points),
+                success_count=success_count,
+                skipped_count=skipped_count,
+                failed_count=failed_count
+            )
         
     except ModbusControllerNotFoundException:
         raise
@@ -775,178 +781,149 @@ async def write_modbus_point_data(point_id: str, request: ModbusPointWriteReques
     except Exception as e:
         raise ModbusWriteException(f"Failed to write point data: {str(e)}")
 
-async def export_modbus_controller_config_file(
-    controller_ids: List[str] = None, 
-    format: ConfigFormat = ConfigFormat.NATIVE, 
-    db: AsyncSession = None
-) -> Dict[str, str]:
-    """Export controller configuration as file (supports multiple controllers)"""
+async def import_modbus_configuration_from_file(
+    config: Dict[str, Any], 
+    format: str, 
+    db: AsyncSession, 
+    import_mode: ImportMode
+) -> ModbusConfigImportSimpleResponse:
+    """
+    Import Modbus configuration from file (single controller only)
+        
+    Status Descriptions:
+        - success: Controller and points created/updated successfully
+        - skipped_controller: Controller already exists and skip mode is used
+        - skipped_points: All points already exist and were skipped
+        - partial_success: Controller successful, but some points failed or skipped
+        - controller_failed: Controller import failed
+        - points_failed: Controller successful but all points import failed
+    """
+    import traceback
     try:
         manager = ModbusConfigManager()
-        config = await manager.export_config(controller_ids, db, format)
+        result = await manager.import_config(config, db, ConfigFormat(format), import_mode)
         
-        # Create filename based on what's being exported
-        if controller_ids is None:
-            # Export all controllers
-            filename = f"modbus_all_controllers_{format.value}.json"
-        elif len(controller_ids) == 1:
-            # Export single controller
-            controller_result = await db.execute(
-                select(ModbusController).where(ModbusController.id == controller_ids[0])
-            )
-            controller = controller_result.scalar_one_or_none()
-            if not controller:
-                raise ModbusControllerNotFoundException(f"Controller {controller_ids[0]} not found")
-            
-            safe_controller_name = "".join(c for c in controller.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-            safe_controller_name = safe_controller_name.replace(' ', '_')
-            filename = f"modbus_{safe_controller_name}_{format.value}.json"
+        controller_result = result["controller_result"]
+        
+        points = controller_result["points"]
+        total_points = len(points)
+        success_count = sum(1 for p in points if p["status"] == "success")
+        skipped_count = sum(1 for p in points if p["status"] == "skipped")
+        failed_count = sum(1 for p in points if p["status"] in ["failed", "invalid", "error"])
+
+        extra_stats = {}
+        if success_count > 0 and (skipped_count > 0 or failed_count > 0):
+            extra_stats = {
+                "success_count": success_count,
+                "skipped_count": skipped_count,
+                "failed_count": failed_count,
+            }
+
+        response = ModbusConfigImportSimpleResponse(
+            controller_id=controller_result.get("controller_id"),
+            controller_name=controller_result["controller_name"],
+            points=[
+                ModbusPointImportResult(
+                    point_id=p.get("point_id"),
+                    point_name=p["point_name"],
+                    status=p["status"],
+                    message=p["message"]
+                ) for p in controller_result["points"]
+            ],
+            total_points=total_points,
+            import_time=datetime.now().isoformat(),
+            **extra_stats
+        )
+        
+        response._status = controller_result["status"]
+        response._message = controller_result["message"]
+        
+        if controller_result["status"] == "skipped":
+            # Controller was skipped
+            if import_mode == ImportMode.SKIP_CONTROLLER:
+                # Skip mode: Controller already exists, normal skip
+                response._status = "skipped_controller"
+                response._message = "Controller already exists"
+            else:
+                # Skip in other modes is considered a failure
+                response._status = "controller_failed"
+                response._message = "Controller import failed"
+        elif success_count == 0:
+            # No points were successfully imported
+            if skipped_count == total_points and failed_count == 0:
+                # All points were skipped (already exist)
+                response._status = "skipped_points"
+                response._message = "All points already exists"
+            elif failed_count == total_points and skipped_count == 0:
+                # All points failed
+                if controller_result["status"] == "success":
+                    # Controller successful but all points failed
+                    response._status = "points_failed"
+                    response._message = "All points failed to import"
+                else:
+                    # Controller also failed
+                    response._status = "controller_failed"
+                    response._message = "Controller failed to import"
+            else:
+                # Mixed case: some skipped, some failed, but no success
+                if controller_result["status"] == "success":
+                    # Controller successful but all points failed or skipped
+                    response._status = "points_failed"
+                    response._message = "All points failed to import"
+                else:
+                    # Controller also failed
+                    response._status = "controller_failed"
+                    response._message = "Controller failed to import"
+        elif success_count > 0 and (skipped_count > 0 or failed_count > 0):
+            # Partial success: Some points succeeded, but some were skipped or failed
+            response._status = "partial_success"
+            response._message = "Controller imported with partial success"
         else:
-            # Export multiple specific controllers
-            filename = f"modbus_multiple_controllers_{format.value}.json"
+            # All points succeeded
+            response._status = "success"
+            response._message = "Controller imported successfully"
         
-        # Create temporary file
-        temp_dir = tempfile.gettempdir()
-        file_path = os.path.join(temp_dir, filename)
+        return response
+    except ModbusConfigFormatException as e:
+        logger.error(f"ModbusConfigFormatException: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise
+    except ModbusConfigException as e:
+        raise
+    except Exception as e:
+        raise ServerException(f"Import failed: {str(e)}")
+
+async def export_modbus_controller_config_data(
+    controller_id: str, 
+    format: str, 
+    db: AsyncSession
+) -> Dict[str, Any]:
+    """Export Modbus controller configuration data"""
+    try:
+        controller_result = await db.execute(
+            select(ModbusController).where(ModbusController.id == controller_id)
+        )
+        controller = controller_result.scalar_one_or_none()
+        if not controller:
+            raise ModbusControllerNotFoundException(f"Controller {controller_id} not found")
         
-        # Write JSON file
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        config = await export_modbus_config(controller_id, db, ConfigFormat(format))
+        
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"modbus_{controller.name}_{format.value}_{timestamp}.json"
         
         return {
-            "file_path": file_path,
+            "config_data": config,
             "filename": filename,
-            "controller_ids": controller_ids,
-            "format": format.value,
-            "export_time": datetime.now().isoformat()
+            "controller_name": controller.name,
+            "format": format
         }
         
     except ModbusControllerNotFoundException:
         raise
-    except ModbusConfigException:
-        raise
     except Exception as e:
-        raise ServerException(f"Failed to export configuration: {str(e)}")
-
-async def import_modbus_configuration_from_file(
-    config: Dict[str, Any], 
-    format: ConfigFormat, 
-    db: AsyncSession,
-    overwrite: bool = False
-) -> ModbusConfigImportResponse:
-    """Import configuration from file"""
-    try:
-        import_result = await import_modbus_config(config, db, format.value, overwrite)
-        
-        # Get detailed information for each imported controller
-        controller_info_list = []
-        total_points = 0
-        
-        for controller in import_result["imported_controllers"]:
-            points = await get_modbus_points_by_controller(controller.id, db)
-            points_count = points.total
-            total_points += points_count
-            
-            controller_info = ModbusControllerImportInfo(
-                controller_id=controller.id,
-                controller_name=controller.name,
-                points_count=points_count
-            )
-            controller_info_list.append(controller_info)
-        
-        # Convert skipped controllers to response format
-        skipped_controllers = [
-            ModbusControllerSkipInfo(
-                controller_name=skip_info["controller_name"],
-                host=skip_info["host"],
-                port=skip_info["port"],
-                reason=skip_info["reason"]
-            )
-            for skip_info in import_result["skipped_controllers"]
-        ]
-        
-        return ModbusConfigImportResponse(
-            imported_controllers=controller_info_list,
-            skipped_controllers=skipped_controllers,
-            total_requested=import_result["total_requested"],
-            imported_count=import_result["imported_count"],
-            skipped_count=import_result["skipped_count"],
-            total_points=total_points,
-            import_time=datetime.now().isoformat()
-        )
-        
-    except (ModbusConfigException, ModbusConfigFormatMismatchException):
-        raise
-    except Exception as e:
-        raise ServerException(f"Failed to import configuration: {str(e)}")
-
-async def validate_modbus_configuration_from_file(
-    config: Dict[str, Any], 
-    format: ConfigFormat
-) -> ModbusConfigValidationResponse:
-    """Validate configuration file"""
-    try:
-        validation_result = validate_modbus_config(config, format.value)
-        
-        # Extract controller information from config
-        controllers_found = []
-        total_points = 0
-        
-        if format == ConfigFormat.NATIVE:
-            if "controller" in config and "points" in config:
-                # Single controller format
-                controller_name = config["controller"].get("name", "Unknown Controller")
-                points_count = len(config["points"])
-                total_points = points_count
-                
-                controllers_found.append(ModbusControllerValidationInfo(
-                    controller_name=controller_name,
-                    points_count=points_count
-                ))
-                
-            elif "controllers" in config:
-                # Multi-controller format
-                for controller_data in config["controllers"]:
-                    controller_name = controller_data.get("name", "Unknown Controller")
-                    points_count = len(controller_data.get("points", []))
-                    total_points += points_count
-                    
-                    controllers_found.append(ModbusControllerValidationInfo(
-                        controller_name=controller_name,
-                        points_count=points_count
-                    ))
-                    
-        elif format == ConfigFormat.THINGSBOARD:
-            master = config.get("master", {})
-            slaves = master.get("slaves", [])
-            
-            for slave in slaves:
-                controller_name = slave.get("deviceName", "Unknown Controller")
-                # Count points from all sections
-                attributes_count = len(slave.get("attributes", []))
-                timeseries_count = len(slave.get("timeseries", []))
-                rpc_count = len(slave.get("rpc", []))
-                points_count = attributes_count + timeseries_count + rpc_count
-                total_points += points_count
-                
-                controllers_found.append(ModbusControllerValidationInfo(
-                    controller_name=controller_name,
-                    points_count=points_count
-                ))
-        
-        return ModbusConfigValidationResponse(
-            is_valid=validation_result.is_valid,
-            errors=validation_result.errors,
-            warnings=validation_result.warnings,
-            controllers_found=controllers_found,
-            total_controllers=len(controllers_found),
-            total_points=total_points
-        )
-        
-    except (ModbusConfigException, ModbusConfigFormatMismatchException):
-        raise
-    except Exception as e:
-        raise ServerException(f"Failed to validate configuration: {str(e)}")
+        logger.error(f"Export failed: {str(e)}")
+        raise ModbusConfigException(f"Export failed: {str(e)}")
 
 async def delete_all_modbus_points_by_controller_id(controller_id: str, db: AsyncSession) -> None:
     """Delete all points for a specific controller"""

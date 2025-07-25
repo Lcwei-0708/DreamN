@@ -75,8 +75,6 @@ class WebPushSubscriptionNotFoundException(BaseServiceException):
         message = f"{message}" if message else "Web push subscription not found"
         super().__init__(message, "WEB_PUSH_SUBSCRIPTION_NOT_FOUND", details, status_code=404, log_level="warning")
 
-# ===== Modbus Related Exceptions =====
-
 class ModbusConnectionException(BaseServiceException):
     """Modbus connection failed exception"""
     def __init__(self, message: str = None, details: Dict[str, Any] = None):
@@ -134,11 +132,11 @@ class ModbusConfigException(BaseServiceException):
         message = f"{message}" if message else "Modbus configuration error"
         super().__init__(message, "MODBUS_CONFIG_ERROR", details, status_code=400, log_level="error")
 
-class ModbusConfigFormatMismatchException(BaseServiceException):
-    """Modbus configuration format mismatch exception"""
+class ModbusConfigFormatException(BaseServiceException):
+    """Modbus configuration format exception"""
     def __init__(self, message: str = None, details: Dict[str, Any] = None):
-        message = f"{message}" if message else "Configuration format does not match the expected format"
-        super().__init__(message, "MODBUS_CONFIG_FORMAT_MISMATCH", details, status_code=422, log_level="warning")
+        message = f"{message}" if message else "Configuration format error"
+        super().__init__(message, "MODBUS_CONFIG_FORMAT_ERROR", details, status_code=415, log_level="warning")
 
 class ModbusControllerDuplicateException(BaseServiceException):
     """Modbus controller with same host and port already exists"""

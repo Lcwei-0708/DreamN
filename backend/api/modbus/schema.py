@@ -1,6 +1,6 @@
-from typing import Optional, List, Union, Dict, Any
-from pydantic import BaseModel, Field
 from enum import Enum
+from pydantic import BaseModel, Field
+from typing import Optional, List, Union
 
 class PointType(str, Enum):
     coil = "coil"
@@ -9,6 +9,7 @@ class PointType(str, Enum):
     input_register = "input_register"
 
 class ConfigFormat(str, Enum):
+    """Configuration file format"""
     native = "native"
     thingsboard = "thingsboard"
 
@@ -112,13 +113,6 @@ class ModbusPointListResponse(BaseModel):
     total: int = Field(..., description="總數量")
     points: List[ModbusPointResponse] = Field(..., description="點位列表")
 
-class ModbusPointBatchCreateResponse(BaseModel):
-    created_points: List[ModbusPointResponse] = Field(..., description="成功建立的點位列表")
-    skipped_points: List[Dict[str, Any]] = Field(..., description="被跳過的點位列表")
-    total_requested: int = Field(..., description="請求的總點位數")
-    created_count: int = Field(..., description="成功建立的點位數")
-    skipped_count: int = Field(..., description="被跳過的點位數")
-
 class ModbusPointDeleteRequest(BaseModel):
     point_ids: List[str] = Field(..., description="要刪除的點位 ID 列表")
 
@@ -175,37 +169,42 @@ class ModbusControllerValidationInfo(BaseModel):
     controller_name: str = Field(..., description="控制器名稱")
     points_count: int = Field(..., description="該控制器的點位數量")
 
-class ModbusConfigValidationResponse(BaseModel):
-    is_valid: bool = Field(..., description="是否有效")
-    errors: List[str] = Field(..., description="錯誤訊息列表")
-    warnings: List[str] = Field(..., description="警告訊息列表")
-    controllers_found: List[ModbusControllerValidationInfo] = Field(..., description="找到的控制器資訊")
-    total_controllers: int = Field(..., description="總控制器數量")
-    total_points: int = Field(..., description="總點位數")
+class ModbusPointBatchCreateResult(BaseModel):
+    point_id: Optional[str] = Field(None, description="點位 ID")
+    name: str = Field(..., description="點位名稱")
+    status: str = Field(..., description="操作狀態(success: 成功, skipped: 跳過, invalid: 無效, error: 錯誤)", example="success|skipped|invalid|error")
+    message: str = Field(..., description="狀態訊息")
 
-class ModbusControllerImportInfo(BaseModel):
-    controller_id: str = Field(..., description="控制器 ID")
+class ModbusPointBatchCreateSimpleResponse(BaseModel):
+    results: List[ModbusPointBatchCreateResult] = Field(..., description="每個點位的建立結果")
+    total_requested: Optional[int] = Field(None, description="請求的總點位數")
+    success_count: Optional[int] = Field(None, description="成功建立的點位數")
+    skipped_count: Optional[int] = Field(None, description="被跳過的點位數")
+    failed_count: Optional[int] = Field(None, description="建立失敗的點位數")
+
+class ModbusPointImportResult(BaseModel):
+    point_id: Optional[str] = Field(None, description="點位 ID")
+    point_name: str = Field(..., description="點位名稱")
+    status: str = Field(..., description="操作狀態(success: 成功, skipped: 跳過, failed: 失敗)")
+    message: str = Field(..., description="狀態訊息")
+
+class ModbusConfigImportSimpleResponse(BaseModel):
+    """Modbus configuration import simple response (single controller only)"""
+    controller_id: Optional[str] = Field(None, description="控制器 ID")
     controller_name: str = Field(..., description="控制器名稱")
-    points_count: int = Field(..., description="該控制器的點位數量")
-
-class ModbusControllerSkipInfo(BaseModel):
-    controller_name: str = Field(..., description="控制器名稱")
-    host: str = Field(..., description="主機地址")
-    port: int = Field(..., description="端口")
-    reason: str = Field(..., description="跳過原因")
-
-class ModbusConfigImportResponse(BaseModel):
-    imported_controllers: List[ModbusControllerImportInfo] = Field(..., description="已匯入的控制器詳細資訊")
-    skipped_controllers: List[ModbusControllerSkipInfo] = Field(..., description="被跳過的控制器詳細資訊")
-    total_requested: int = Field(..., description="請求的總控制器數")
-    imported_count: int = Field(..., description="成功匯入的控制器數")
-    skipped_count: int = Field(..., description="被跳過的控制器數")
+    points: List[ModbusPointImportResult] = Field(..., description="點位匯入結果")
     total_points: int = Field(..., description="總點位數")
+    success_count: Optional[int] = Field(None, description="成功點位數")
+    skipped_count: Optional[int] = Field(None, description="跳過點位數")
+    failed_count: Optional[int] = Field(None, description="失敗點位數")
     import_time: str = Field(..., description="匯入時間")
 
-class ModbusConfigExportRequest(BaseModel):
-    controller_ids: Optional[List[str]] = Field(None, description="要匯出的控制器 ID 列表（空值 = 匯出全部）")
-    format: ConfigFormat = Field(ConfigFormat.native, description="匯出格式")
+class ImportMode(str, Enum):
+    """Import mode for handling duplicate controllers and points"""
+    SKIP_CONTROLLER = "skip_controller"  # Skip entire controller if it exists
+    OVERWRITE_CONTROLLER = "overwrite_controller"  # Overwrite entire controller and all points
+    SKIP_DUPLICATES_POINT = "skip_duplicates_point"  # Keep controller, skip duplicate points
+    OVERWRITE_DUPLICATES_POINT = "overwrite_duplicates_point"  # Keep controller, overwrite duplicate points
 
 modbus_controller_response_example = {
     "code": 200,
@@ -318,61 +317,6 @@ modbus_point_list_response_example = {
     }
 }
 
-modbus_point_batch_create_response_example = {
-    "code": 200,
-    "message": "Successfully created 2 points, skipped 1 duplicate points",
-    "data": {
-        "created_points": [
-            {
-                "id": "uuid-point-id-1",
-                "controller_id": "uuid-controller-id",
-                "name": "Temperature 1",
-                "description": "Boiler temperature sensor",
-                "type": "holding_register",
-                "data_type": "uint16",
-                "address": 40001,
-                "len": 1,
-                "unit_id": 1,
-                "formula": "x * 0.1",
-                "unit": "°C",
-                "min_value": 0.0,
-                "max_value": 100.0,
-                "created_at": "2024-01-01T10:00:00+00:00",
-                "updated_at": "2024-01-01T10:00:00+00:00"
-            },
-            {
-                "id": "uuid-point-id-2",
-                "controller_id": "uuid-controller-id",
-                "name": "Pressure 1",
-                "description": "System pressure",
-                "type": "input_register",
-                "data_type": "uint16",
-                "address": 30001,
-                "len": 1,
-                "unit_id": 1,
-                "formula": None,
-                "unit": "bar",
-                "min_value": 0.0,
-                "max_value": 10.0,
-                "created_at": "2024-01-01T10:05:00+00:00",
-                "updated_at": "2024-01-01T10:05:00+00:00"
-            }
-        ],
-        "skipped_points": [
-            {
-                "name": "Temperature 1",
-                "address": 40001,
-                "type": "holding_register",
-                "unit_id": 1,
-                "reason": "Point already exists"
-            }
-        ],
-        "total_requested": 3,
-        "created_count": 2,
-        "skipped_count": 1
-    }
-}
-
 modbus_multi_point_data_response_example = {
     "code": 200,
     "message": "Controller values read successfully",
@@ -409,63 +353,9 @@ modbus_point_write_response_example = {
     }
 }
 
-modbus_config_import_response_example = {
-    "code": 200,
-    "message": "Successfully imported 2 controllers, skipped 1 duplicate controller",
-    "data": {
-        "imported_controllers": [
-            {
-                "controller_id": "uuid-controller-id-1",
-                "controller_name": "Test Controller 1",
-                "points_count": 8
-            },
-            {
-                "controller_id": "uuid-controller-id-2", 
-                "controller_name": "Test Controller 2",
-                "points_count": 7
-            }
-        ],
-        "skipped_controllers": [
-            {
-                "controller_name": "Test Controller 3",
-                "host": "192.168.1.103",
-                "port": 502,
-                "reason": "Controller already exists"
-            }
-        ],
-        "total_requested": 3,
-        "imported_count": 2,
-        "skipped_count": 1,
-        "total_points": 15,
-        "import_time": "2024-01-01T10:00:00+00:00"
-    }
-}
-
-modbus_config_validation_response_example = {
-    "code": 200,
-    "message": "Configuration validation completed",
-    "data": {
-        "is_valid": True,
-        "errors": [],
-        "warnings": ["Some optional fields are missing"],
-        "controllers_found": [
-            {
-                "controller_name": "Boiler Controller",
-                "points_count": 12
-            },
-            {
-                "controller_name": "Pump Controller",
-                "points_count": 8
-            }
-        ],
-        "total_controllers": 2,
-        "total_points": 20
-    }
-}
-
 modbus_controller_delete_response_example = {
     "code": 207,
-    "message": "Batch delete: partial success",
+    "message": "Delete controllers with partial success",
     "data": {
         "total_requested": 4,
         "deleted_count": 1,
@@ -480,7 +370,7 @@ modbus_controller_delete_response_example = {
 
 modbus_point_delete_response_example = {
     "code": 207,
-    "message": "Batch delete: partial success",
+    "message": "Delete points with partial success",
     "data": {
         "total_requested": 4,
         "deleted_count": 1,
@@ -495,7 +385,7 @@ modbus_point_delete_response_example = {
 
 modbus_controller_delete_failed_response_example = {
     "code": 400,
-    "message": "Failed to delete 3 controllers",
+    "message": "All controllers failed to delete",
     "data": {
         "results": [
             {"id": "uuid-controller-id-1", "status": "not_found", "message": "Controller not found"},
@@ -506,11 +396,157 @@ modbus_controller_delete_failed_response_example = {
 
 modbus_point_delete_failed_response_example = {
     "code": 400,
-    "message": "Failed to delete 3 points",
+    "message": "All points failed to delete",
     "data": {
         "results": [
             {"id": "uuid-point-id-1", "status": "not_found", "message": "Not found"},
             {"id": "uuid-point-id-2", "status": "error", "message": "Server error"}
         ]
+    }
+}
+
+modbus_point_batch_create_simple_response_example = {
+    "code": 200,
+    "message": "All points created successfully",
+    "data": {
+        "results": [
+            {
+                "point_id": "uuid-point-id-1",
+                "name": "Temperature 1",
+                "status": "success",
+                "message": "Created successfully"
+            },
+            {
+                "point_id": "uuid-point-id-2",
+                "name": "Pressure 1",
+                "status": "success",
+                "message": "Created successfully"
+            }
+        ]
+    }
+}
+
+modbus_point_batch_create_partial_response_example = {
+    "code": 207,
+    "message": "Points created with partial success",
+    "data": {
+        "results": [
+            {
+                "point_id": "uuid-point-id-1",
+                "name": "Temperature 1",
+                "status": "success",
+                "message": "Created successfully"
+            },
+            {
+                "point_id": None,
+                "name": "Temperature 2",
+                "status": "skipped",
+                "message": "Point already exists"
+            },
+            {
+                "point_id": None,
+                "name": "Temperature 3",
+                "status": "invalid",
+                "message": "Invalid point"
+            }
+        ],
+        "total_requested": 3,
+        "success_count": 1,
+        "skipped_count": 1,
+        "failed_count": 1
+    }
+}
+
+modbus_point_batch_create_failed_response_example = {
+    "code": 400,
+    "message": "All points failed to create",
+    "data": {
+        "results": [
+            {
+                "point_id": None,
+                "name": "Temperature 1",
+                "status": "skipped",
+                "message": "Point already exists"
+            },
+            {
+                "point_id": None,
+                "name": "Temperature 2",
+                "status": "invalid",
+                "message": "Invalid point"
+            }
+        ]
+    }
+}
+
+modbus_config_import_simple_response_example = {
+    "code": 200,
+    "message": "Controller imported successfully",
+    "data": {
+        "controller_id": "uuid-controller-id-1",
+        "controller_name": "Controller 1",
+        "points": [
+            {
+                "point_id": "uuid-point-id-1",
+                "point_name": "Temperature 1",
+                "status": "success",
+                "message": "Imported successfully"
+            },
+        ],
+        "total_points": 1,
+        "import_time": "2024-01-15T10:30:00.000000"
+    }
+}
+
+modbus_config_import_partial_response_example = {
+    "code": 207,
+    "message": "Controller imported with partial success",
+    "data": {
+        "controller_id": "uuid-controller-id-1",
+        "controller_name": "Controller 1",
+        "points": [
+            {
+                "point_id": "uuid-point-id-1",
+                "point_name": "Temperature 1",
+                "status": "success",
+                "message": "Imported successfully"
+            },
+            {
+                "point_name": "Pressure 1",
+                "status": "skipped",
+                "message": "Point already exists"
+            },
+            {
+                "point_name": "Pressure 2",
+                "status": "invalid",
+                "message": "Invalid point"
+            }
+        ],
+        "total_points": 3,
+        "success_count": 1,
+        "skipped_count": 1,
+        "failed_count": 1,
+        "import_time": "2024-01-15T10:30:00.000000"
+    }
+}
+
+modbus_config_import_failed_response_example = {
+    "code": 400,
+    "message": "All points failed to import",
+    "data": {
+        "controller_name": "Controller 1",
+        "points": [
+            {
+                "point_name": "Temperature 1",
+                "status": "error",
+                "message": "Point error"
+            },
+            {
+                "point_name": "Temperature 2",
+                "status": "invalid",
+                "message": "Invalid point"
+            }
+        ],
+        "total_points": 2,
+        "import_time": "2024-01-15T10:30:00.000000"
     }
 }
