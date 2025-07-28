@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
-import classes from './index.module.scss';
 import jackMan from './Jack.png';
 import jackMask from './mask.png';
 
@@ -181,13 +180,13 @@ const JackMan = ({ size = 300 }) => {
   if (!allImagesLoaded) {
     return (
       <div 
-        className={classes.jackManBox}
+        className="relative w-[300px] aspect-square inline-block"
         style={{
           width: `${size}px`,
           height: `${size}px`,
         }}
       >
-        <div className={classes.loading}>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-10">
           <Loader2 className="w-5 h-5 animate-spin" />
         </div>
         {/* Hidden images for loading */}
@@ -196,14 +195,14 @@ const JackMan = ({ size = 300 }) => {
           src={jackMan} 
           alt="jackMan"
           onLoad={() => handleImageLoad('jackMan')}
-          style={{ display: 'none' }}
+          className="hidden"
         />
         <img
           ref={jackMaskRef}
           src={jackMask}
           alt="jackMask"
           onLoad={() => handleImageLoad('jackMask')}
-          style={{ display: 'none' }}
+          className="hidden"
         />
       </div>
     );
@@ -211,7 +210,7 @@ const JackMan = ({ size = 300 }) => {
 
   return (
     <div 
-      className={classes.jackManBox} 
+      className="relative w-[300px] aspect-square inline-block" 
       ref={containerRef}
       style={{
         width: `${size}px`,
@@ -219,7 +218,7 @@ const JackMan = ({ size = 300 }) => {
       }}
     >
       <div 
-        className={classes.jackMan} 
+        className="w-full h-full block select-none"
         style={{
           backgroundImage: `url(${jackMan})`,
           backgroundSize: 'contain',
@@ -228,7 +227,7 @@ const JackMan = ({ size = 300 }) => {
         }}
       />
       <motion.div
-        className={classes.jackMask}
+        className="absolute top-0 left-0 w-full h-full pointer-events-none select-none"
         style={{
           backgroundImage: `url(${jackMask})`,
           backgroundSize: 'contain',
@@ -251,7 +250,7 @@ const JackMan = ({ size = 300 }) => {
           <>
             {/* Left eye glow effect */}
             <motion.div
-              className={classes.eyeGlow}
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-6"
               style={{
                 left: `calc(50% + ${leftEyeX}px)`,
                 top: `calc(50% + ${leftEyeY}px)`,
@@ -261,14 +260,17 @@ const JackMan = ({ size = 300 }) => {
               exit={{ opacity: 0, scale: 0.5 }}
               transition={{ duration: 0.2 }}
             >
-              <div className={classes.eyeCore}></div>
-              <div className={classes.eyeRing}></div>
-              <div className={classes.eyeFlare}></div>
+              <div className="absolute w-2 h-2 bg-gradient-radial from-white via-red-400 to-red-600 rounded-full transform -translate-x-1/2 -translate-y-1/2 animate-pulse shadow-lg shadow-red-500/80"></div>
+              <div className="absolute w-5 h-5 border-2 border-red-500/60 rounded-full transform -translate-x-1/2 -translate-y-1/2 animate-ping shadow-lg shadow-red-500/40"></div>
+              <div className="absolute w-8 h-8 bg-gradient-radial from-red-500/30 via-red-500/10 to-transparent rounded-full transform -translate-x-1/2 -translate-y-1/2 animate-pulse">
+                <div className="absolute top-1/2 left-1/2 w-10 h-0.5 bg-gradient-to-r from-transparent via-red-500/80 to-transparent transform -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-red-500/60"></div>
+                <div className="absolute top-1/2 left-1/2 w-0.5 h-10 bg-gradient-to-b from-transparent via-red-500/80 to-transparent transform -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-red-500/60"></div>
+              </div>
             </motion.div>
             
             {/* Right eye glow effect */}
             <motion.div
-              className={classes.eyeGlow}
+              className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-6"
               style={{
                 left: `calc(50% + ${rightEyeX}px)`,
                 top: `calc(50% + ${rightEyeY}px)`,
@@ -278,9 +280,12 @@ const JackMan = ({ size = 300 }) => {
               exit={{ opacity: 0, scale: 0.5 }}
               transition={{ duration: 0.2 }}
             >
-              <div className={classes.eyeCore}></div>
-              <div className={classes.eyeRing}></div>
-              <div className={classes.eyeFlare}></div>
+              <div className="absolute w-2 h-2 bg-gradient-radial from-white via-red-400 to-red-600 rounded-full transform -translate-x-1/2 -translate-y-1/2 animate-pulse shadow-lg shadow-red-500/80"></div>
+              <div className="absolute w-5 h-5 border-2 border-red-500/60 rounded-full transform -translate-x-1/2 -translate-y-1/2 animate-ping shadow-lg shadow-red-500/40"></div>
+              <div className="absolute w-8 h-8 bg-gradient-radial from-red-500/30 via-red-500/10 to-transparent rounded-full transform -translate-x-1/2 -translate-y-1/2 animate-pulse">
+                <div className="absolute top-1/2 left-1/2 w-10 h-0.5 bg-gradient-to-r from-transparent via-red-500/80 to-transparent transform -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-red-500/60"></div>
+                <div className="absolute top-1/2 left-1/2 w-0.5 h-10 bg-gradient-to-b from-transparent via-red-500/80 to-transparent transform -translate-x-1/2 -translate-y-1/2 shadow-lg shadow-red-500/60"></div>
+              </div>
             </motion.div>
           </>
         )}
@@ -292,13 +297,15 @@ const JackMan = ({ size = 300 }) => {
           <>
             {/* Left eye laser beam */}
             <motion.div
-              className={classes.laserBeam}
+              className="absolute rounded-full pointer-events-none z-5"
               style={{
                 left: `calc(50% + ${leftEyeX}px)`,
                 top: `calc(50% + ${leftEyeY}px)`,
                 transform: `rotate(${leftBeamProps.angle}deg)`,
                 transformOrigin: '0 50%',
                 height: `${7 * scaleRatio}px`,
+                background: 'linear-gradient(90deg, rgba(255, 0, 0, 0.9) 0%, rgba(255, 0, 0, 0.7) 30%, rgba(255, 0, 0, 0.3) 70%, transparent 100%)',
+                boxShadow: '0 0 10px rgba(255, 0, 0, 0.8), 0 0 20px rgba(255, 0, 0, 0.6), 0 0 30px rgba(255, 0, 0, 0.4)',
                 '--laser-inner-height': `${5 * scaleRatio}px`
               }}
               initial={{ width: 0, opacity: 0 }}
@@ -311,17 +318,24 @@ const JackMan = ({ size = 300 }) => {
                 ease: "easeOut",
                 width: { duration: 0.6 }
               }}
-            />
+            >
+              <div 
+                className="absolute top-1/2 left-0 w-full rounded-full bg-white/90 transform -translate-y-1/2"
+                style={{ height: 'var(--laser-inner-height, 5px)' }}
+              ></div>
+            </motion.div>
             
             {/* Right eye laser beam */}
             <motion.div
-              className={classes.laserBeam}
+              className="absolute rounded-full pointer-events-none z-5"
               style={{
                 left: `calc(50% + ${rightEyeX}px)`,
                 top: `calc(50% + ${rightEyeY}px)`,
                 transform: `rotate(${rightBeamProps.angle}deg)`,
                 transformOrigin: '0 50%',
                 height: `${7 * scaleRatio}px`,
+                background: 'linear-gradient(90deg, rgba(255, 0, 0, 0.9) 0%, rgba(255, 0, 0, 0.7) 30%, rgba(255, 0, 0, 0.3) 70%, transparent 100%)',
+                boxShadow: '0 0 10px rgba(255, 0, 0, 0.8), 0 0 20px rgba(255, 0, 0, 0.6), 0 0 30px rgba(255, 0, 0, 0.4)',
                 '--laser-inner-height': `${5 * scaleRatio}px`
               }}
               initial={{ width: 0, opacity: 0 }}
@@ -334,19 +348,24 @@ const JackMan = ({ size = 300 }) => {
                 ease: "easeOut",
                 width: { duration: 0.6 }
               }}
-            />
+            >
+              <div 
+                className="absolute top-1/2 left-0 w-full rounded-full bg-white/90 transform -translate-y-1/2"
+                style={{ height: 'var(--laser-inner-height, 5px)' }}
+              ></div>
+            </motion.div>
           </>
         )}
       </AnimatePresence>
       
       <div 
-        className={classes.actBtn} 
+        className="absolute rounded-full bg-cover transition-shadow duration-200 cursor-pointer select-none z-2 hover:shadow-[0_0_15px_5px_#03e084,0_0_30px_10px_rgba(3,224,132,0.5)] hover:border-[#03e084] border-3 border-transparent"
         onClick={handleButtonClick}
         style={{
-          left: '35.7%',
-          top: '48.5%',
-          width: `${30 * scaleRatio}px`,
-          height: `${30 * scaleRatio}px`,
+          left: '35.92%',
+          top: '49.1%',
+          width: `${26.85 * scaleRatio}px`,
+          height: `${26.85 * scaleRatio}px`,
         }}
       />
     </div>
