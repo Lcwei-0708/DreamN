@@ -1,5 +1,3 @@
-import os
-import json
 import logging
 from typing import Dict, Any
 from datetime import datetime
@@ -8,6 +6,9 @@ from models.modbus_point import ModbusPoint
 from sqlalchemy import select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.modbus_controller import ModbusController
+from utils.modbus import (
+    export_modbus_config, import_modbus_config, ImportMode
+)
 from .schema import (
     ModbusControllerCreateRequest, ModbusControllerUpdateRequest, ModbusControllerResponse,
     ModbusControllerListResponse, ModbusControllerDeleteRequest, ModbusControllerDeleteResponse,
@@ -17,16 +18,13 @@ from .schema import (
     ModbusPointBatchCreateSimpleResponse, ModbusPointBatchCreateResult,
     ModbusControllerValuesResponse,
     ModbusConfigImportSimpleResponse, ModbusPointImportResult,
-    ConfigFormat, ImportMode
+    ImportMode
 )
 from utils.custom_exception import (
     ServerException, ModbusConnectionException, ModbusControllerNotFoundException,
     ModbusPointNotFoundException, ModbusReadException, ModbusValidationException, 
     ModbusWriteException, ModbusRangeValidationException, ModbusConfigException,
     ModbusControllerDuplicateException, ModbusPointDuplicateException, ModbusConfigFormatException
-)
-from utils.modbus_config_manager import (
-    ModbusConfigManager, export_modbus_config
 )
 
 logger = logging.getLogger(__name__)
@@ -78,7 +76,6 @@ async def create_modbus_controller(request: ModbusControllerCreateRequest, db: A
                 controller.status = True
                 await db.commit()
                 await db.refresh(controller)
-                logger.info(f"Controller {controller.name} connection test successful")
             else:
                 logger.warning(f"Controller {controller.name} connection test failed, but controller was created")
                 
@@ -667,7 +664,12 @@ async def read_modbus_controller_points_data(controller_id: str, db: AsyncSessio
         points = points_result.scalars().all()
         
         if not points:
-            raise ModbusValidationException(f"No points found for controller {controller_id}")
+            return ModbusControllerValuesResponse(
+                total=0,
+                successful=0,
+                failed=0,
+                values=[]
+            )
         
         successful_values = []
         failed_count = 0
@@ -720,7 +722,7 @@ async def read_modbus_controller_points_data(controller_id: str, db: AsyncSessio
             values=successful_values
         )
         
-    except (ModbusControllerNotFoundException, ModbusValidationException):
+    except ModbusControllerNotFoundException:
         raise
     except Exception as e:
         raise ModbusReadException(f"Failed to read controller points data: {str(e)}")
@@ -798,10 +800,8 @@ async def import_modbus_configuration_from_file(
         - controller_failed: Controller import failed
         - points_failed: Controller successful but all points import failed
     """
-    import traceback
     try:
-        manager = ModbusConfigManager()
-        result = await manager.import_config(config, db, ConfigFormat(format), import_mode)
+        result = await import_modbus_config(config, db, format, import_mode.value)
         
         controller_result = result["controller_result"]
         
@@ -884,11 +884,9 @@ async def import_modbus_configuration_from_file(
             response._message = "Controller imported successfully"
         
         return response
-    except ModbusConfigFormatException as e:
-        logger.error(f"ModbusConfigFormatException: {str(e)}")
-        logger.error(traceback.format_exc())
+    except ModbusConfigFormatException:
         raise
-    except ModbusConfigException as e:
+    except ModbusConfigException:
         raise
     except Exception as e:
         raise ServerException(f"Import failed: {str(e)}")
@@ -907,10 +905,10 @@ async def export_modbus_controller_config_data(
         if not controller:
             raise ModbusControllerNotFoundException(f"Controller {controller_id} not found")
         
-        config = await export_modbus_config(controller_id, db, ConfigFormat(format))
+        config = await export_modbus_config(controller_id, db, format)
         
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"modbus_{controller.name}_{format.value}_{timestamp}.json"
+        filename = f"modbus_{controller.name}_{format}_{timestamp}.json"
         
         return {
             "config_data": config,
@@ -922,7 +920,6 @@ async def export_modbus_controller_config_data(
     except ModbusControllerNotFoundException:
         raise
     except Exception as e:
-        logger.error(f"Export failed: {str(e)}")
         raise ModbusConfigException(f"Export failed: {str(e)}")
 
 async def delete_all_modbus_points_by_controller_id(controller_id: str, db: AsyncSession) -> None:

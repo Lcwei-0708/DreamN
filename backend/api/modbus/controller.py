@@ -1,8 +1,7 @@
 import json
-from typing import Annotated, Union, Dict, Any
+from typing import Annotated, Union
 from core.dependencies import get_db
-from fastapi.responses import FileResponse, StreamingResponse
-import io
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from extensions.modbus import get_modbus, ModbusManager
 from utils.response import APIResponse, parse_responses, common_responses
