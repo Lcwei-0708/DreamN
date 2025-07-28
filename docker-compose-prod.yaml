@@ -36,8 +36,8 @@ services:
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "nginx -t || exit 1"]
-      interval: 10s
-      timeout: 5s
+      interval: 30s
+      timeout: 30s
       retries: 5
 
   frontend:
@@ -68,8 +68,8 @@ services:
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "test -f /app/dist/index.html || exit 1"]
-      interval: 10s
-      timeout: 10s
+      interval: 30s
+      timeout: 30s
       retries: 5
 
   backend:
@@ -113,8 +113,8 @@ services:
     restart: always    
     healthcheck:
       test: ["CMD-SHELL", "curl --silent --fail localhost:5000 || exit 1"]
-      interval: 10s
-      timeout: 10s
+      interval: 30s
+      timeout: 30s
       retries: 5
 
   mariadb:
@@ -136,7 +136,7 @@ services:
       test: ["CMD-SHELL", "mariadb-admin --user=$${MYSQL_USER} --password=$${MYSQL_PASSWORD} --host=localhost ping"]
       start_period: 10s
       interval: 30s
-      timeout: 5s
+      timeout: 30s
       retries: 5
       
   phpmyadmin:
@@ -169,7 +169,7 @@ services:
       test: ["CMD-SHELL", "redis-cli ping"]
       start_period: 10s
       interval: 30s
-      timeout: 5s
+      timeout: 30s
       retries: 5
 
 volumes:
