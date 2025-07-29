@@ -1,6 +1,6 @@
 # DreamN
 
-**DreamN** is a containerized fullstack web development template that uses **Docker Compose** to integrate **React**, **FastAPI**, **MariaDB**, and **Nginx**. It offers a modern, production-like environment with clear separation of frontend and backend services, streamlining development and deployment while ensuring architectural clarity and maintainability.
+**DreamN** is a containerized fullstack web development template that uses **Docker Compose** to integrate **React**, **FastAPI**, **MariaDB**, and **Nginx**. It provides clear separation between frontend and backend services, helping you quickly build and deploy web applications while maintaining clear architecture and easy maintenance.
 
 
 ## Features
@@ -9,7 +9,8 @@
 - 🚀 **Backend**: Powered by FastAPI, providing a robust and flexible API layer.
 - 🛢️ **Database**: Uses MariaDB for reliable and high-performance data storage.
 - 🔀 **Reverse Proxy**: Nginx serves as a reverse proxy, efficiently routing traffic to the appropriate services.
-- 🐳 **Dockerized**: All services are containerized and orchestrated with Docker Compose, ensuring easy setup and consistent environments across development and production.
+- 📊 **Log Management**: Grafana provides log visualization and monitoring dashboards.
+- 🐳 **Dockerized**: All services are containerized with Docker Compose for easy deployment.
 
 
 ## System Requirements
