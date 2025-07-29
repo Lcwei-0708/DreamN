@@ -1,4 +1,4 @@
-FROM nginx:latest
+FROM nginx:1.29.0
 
 # Install required tools: logrotate for log management, cron for scheduling, curl for downloading gomplate, gomplate for template processing
 RUN apt-get update && apt-get install -y logrotate cron curl procps \
