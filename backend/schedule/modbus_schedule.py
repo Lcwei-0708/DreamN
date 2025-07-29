@@ -15,7 +15,7 @@ class ModbusSchedule:
             from models.modbus_controller import ModbusController
             from sqlalchemy import select
             
-            logger.info("Starting reconnect for controllers with status=false...")
+            logger.debug("Starting reconnect for controllers with status=false...")
             
             async for db in get_db():
                 # Query database for controllers with status=false

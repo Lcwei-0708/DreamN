@@ -1,5 +1,5 @@
+import re
 import logging
-import datetime
 from typing import Optional
 from functools import wraps
 from core.config import settings
@@ -115,6 +115,23 @@ class KeycloakExtension:
             else:
                 result[k] = [str(v)]
         return result
+
+    def extract_status_code_from_error(self, error_str: str) -> Optional[int]:
+        """Extract HTTP status code from Keycloak error message"""
+        match = re.search(r'(\d{3}):', error_str)
+        if match:
+            return int(match.group(1))
+        return None
+
+    def is_keycloak_404_error(self, error_str: str) -> bool:
+        """Check if the error is a Keycloak 404 error"""
+        status_code = self.extract_status_code_from_error(error_str)
+        return status_code == 404
+
+    def is_keycloak_409_error(self, error_str: str) -> bool:
+        """Check if the error is a Keycloak 409 error (conflict)"""
+        status_code = self.extract_status_code_from_error(error_str)
+        return status_code == 409
 
 _KEYCLOAK_EXTENSION: Optional[KeycloakExtension] = None
 

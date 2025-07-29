@@ -1,4 +1,5 @@
 import math
+import re
 from typing import Optional, List, Dict, Any
 from websocket.manager import get_manager
 from extensions.keycloak import get_keycloak
@@ -203,7 +204,8 @@ async def update_user(user_id: str, user_data: UpdateUserRequest) -> None:
     except EmailAlreadyExistsException:
         raise
     except Exception as e:
-        if "not found" in str(e).lower():
+        error_str = str(e)
+        if keycloak.is_keycloak_404_error(error_str):
             raise UserNotFoundException(f"user_id: {user_id}")
         raise ServerException(f"Failed to update user {user_id}: {str(e)}")
 
@@ -220,7 +222,8 @@ async def delete_users(user_ids: List[str]) -> DeleteUsersResponse:
                 "message": "Deleted Successfully"
             })
         except Exception as e:
-            if "not found" in str(e).lower():
+            error_str = str(e)
+            if keycloak.is_keycloak_404_error(error_str):
                 results.append({
                     "id": user_id,
                     "status": "not_found",
@@ -248,7 +251,8 @@ async def reset_user_password(user_id: str, new_password: str) -> None:
     try:
         await keycloak_admin.a_set_user_password(user_id, new_password, temporary=True)
     except Exception as e:
-        if "not found" in str(e).lower():
+        error_str = str(e)
+        if keycloak.is_keycloak_404_error(error_str):
             raise UserNotFoundException(f"user_id: {user_id}")
         raise ServerException(f"Failed to reset password for user {user_id}: {str(e)}")
 
@@ -282,7 +286,8 @@ async def create_role(role_data: CreateRoleRequest) -> CreateRoleResponse:
         await keycloak_admin.a_create_realm_role(role_payload)
         return CreateRoleResponse(role_name=role_data.name)
     except Exception as e:
-        if "exists" in str(e).lower():
+        error_str = str(e)
+        if keycloak.is_keycloak_409_error(error_str):
             raise RoleAlreadyExistsException(f"role_name: {role_data.name}")
         raise ServerException(f"Failed to create role {role_data.name}: {str(e)}")
 
@@ -296,7 +301,8 @@ async def update_role(role_name: str, role_data: UpdateRoleRequest) -> None:
         }
         await keycloak_admin.a_update_realm_role(role_name, update_payload)
     except Exception as e:
-        if "not found" in str(e).lower():
+        error_str = str(e)
+        if keycloak.is_keycloak_404_error(error_str):
             raise RoleNotFoundException(role_name)
         raise ServerException(f"Failed to update role {role_name}: {str(e)}")
 
@@ -322,7 +328,8 @@ async def update_role_attributes(role_name: str, attributes: dict) -> None:
         
         await keycloak_admin.a_update_realm_role(role_name, update_payload)
     except Exception as e:
-        if "not found" in str(e).lower():
+        error_str = str(e)
+        if keycloak.is_keycloak_404_error(error_str):
             raise RoleNotFoundException(role_name)
         raise ServerException(f"Failed to update role attributes for {role_name}: {str(e)}")
 
@@ -331,6 +338,7 @@ async def delete_role(role_name: str) -> None:
     try:
         await keycloak_admin.a_delete_realm_role(role_name)
     except Exception as e:
-        if "not found" in str(e).lower():
+        error_str = str(e)
+        if keycloak.is_keycloak_404_error(error_str):
             raise RoleNotFoundException(f"role_name: {role_name}")
         raise ServerException(f"Failed to delete role {role_name}: {str(e)}")

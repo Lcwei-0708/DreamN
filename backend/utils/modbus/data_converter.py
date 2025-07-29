@@ -102,77 +102,131 @@ class ModbusDataConverter:
         points_data = []
         unit_id = slave.get("unitId", 1)
         
-        # Collect all points from different sections and deduplicate by tag name
+        # Collect all points from different sections and deduplicate by address, unit_id, and type
         all_points = {}
         
         # Process attributes (coils and discrete inputs)
         for attr in slave.get("attributes", []):
-            tag = attr.get("tag")
-            if tag not in all_points:
-                all_points[tag] = {
+            point_key = cls._create_point_key(attr, unit_id)
+            if point_key not in all_points:
+                all_points[point_key] = {
                     "data": attr,
-                    "sections": ["attribute"]
+                    "sections": ["attribute"],
+                    "items": [attr]
                 }
             else:
-                all_points[tag]["sections"].append("attribute")
+                all_points[point_key]["sections"].append("attribute")
+                all_points[point_key]["items"].append(attr)
         
         # Process timeseries (holding registers and input registers)
         for ts in slave.get("timeseries", []):
-            tag = ts.get("tag")
-            if tag not in all_points:
-                all_points[tag] = {
+            point_key = cls._create_point_key(ts, unit_id)
+            if point_key not in all_points:
+                all_points[point_key] = {
                     "data": ts,
-                    "sections": ["timeseries"]
+                    "sections": ["timeseries"],
+                    "items": [ts]
                 }
             else:
-                all_points[tag]["sections"].append("timeseries")
+                all_points[point_key]["sections"].append("timeseries")
+                all_points[point_key]["items"].append(ts)
         
         # Process RPC (writable points)
         for rpc in slave.get("rpc", []):
-            tag = rpc.get("tag")
-            if tag not in all_points:
-                all_points[tag] = {
+            point_key = cls._create_point_key(rpc, unit_id)
+            if point_key not in all_points:
+                all_points[point_key] = {
                     "data": rpc,
-                    "sections": ["rpc"]
+                    "sections": ["rpc"],
+                    "items": [rpc]
                 }
             else:
-                all_points[tag]["sections"].append("rpc")
+                all_points[point_key]["sections"].append("rpc")
+                all_points[point_key]["items"].append(rpc)
         
         # Convert each unique point
-        for tag, point_info in all_points.items():
-            point_data = cls._convert_thingsboard_item(point_info["data"], unit_id, "+".join(point_info["sections"]))
+        for point_key, point_info in all_points.items():
+            point_data = cls._convert_thingsboard_item_merged(point_info, unit_id)
             if point_data:
                 points_data.append(point_data)
         
         return points_data
-    
+
     @classmethod
-    def _convert_thingsboard_item(cls, item: Dict[str, Any], unit_id: int, sections: str) -> Optional[Dict[str, Any]]:
-        """Convert single ThingsBoard item to unified format"""
+    def _create_point_key(cls, item: Dict[str, Any], unit_id: int) -> str:
+        """Create a unique key for a point based on address, unit_id, and type"""
+        function_code = item.get("functionCode")
+        point_type = cls._get_point_type_from_function_code(function_code)
+        address = item.get("address", 0)
+        
+        # For holding registers, both read (function code 3) and write (function code 6) 
+        # should be merged into the same point
+        if point_type == ModbusPointType.HOLDING_REGISTER:
+            point_type = ModbusPointType.HOLDING_REGISTER
+        
+        return f"{address}_{unit_id}_{point_type}"
+
+    @classmethod
+    def _convert_thingsboard_item_merged(cls, point_info: Dict[str, Any], unit_id: int) -> Optional[Dict[str, Any]]:
+        """Convert merged ThingsBoard items to unified format"""
         try:
-            function_code = item.get("functionCode")
+            items = point_info["items"]
+            sections = point_info["sections"]
+            
+            # Use the first item as base for common properties
+            base_item = items[0]
+            function_code = base_item.get("functionCode")
             point_type = cls._get_point_type_from_function_code(function_code)
             
             if not point_type:
-                logger.warning(f"Unsupported function code {function_code} for item {item.get('tag', 'unknown')}")
+                logger.warning(f"Unsupported function code {function_code} for item {base_item.get('tag', 'unknown')}")
                 return None
             
+            # Determine the best name for the merged point
+            # Prefer timeseries name, then rpc name, then attribute name
+            name = base_item.get("tag", "Imported Point")
+            for item in items:
+                if "timeseries" in sections and item.get("tag"):
+                    name = item.get("tag")
+                    break
+                elif "rpc" in sections and item.get("tag"):
+                    name = item.get("tag")
+                    break
+            
+            # Determine data type from all items (prefer more specific types)
+            data_type = ModbusDataType.UINT16  # default
+            for item in items:
+                item_type = cls.TB_TYPE_TO_DATA_TYPE.get(item.get("type", "uint16"), ModbusDataType.UINT16)
+                # Prefer more specific types (e.g., float32 over uint16)
+                if item_type in [ModbusDataType.FLOAT32, ModbusDataType.FLOAT64, ModbusDataType.INT32, ModbusDataType.UINT32]:
+                    data_type = item_type
+                    break
+                elif item_type in [ModbusDataType.INT16, ModbusDataType.UINT16] and data_type == ModbusDataType.UINT16:
+                    data_type = item_type
+            
+            # Determine length from all items (use maximum length)
+            max_len = 1
+            for item in items:
+                item_len = item.get("objectsCount", 1)
+                max_len = max(max_len, item_len)
+            
             return {
-                "name": item.get("tag", "Imported Point"),
+                "name": name,
                 "type": point_type,
-                "data_type": cls.TB_TYPE_TO_DATA_TYPE.get(item.get("type", "uint16"), ModbusDataType.UINT16),
-                "address": item.get("address", 0),
-                "len": item.get("objectsCount", 1),
+                "data_type": data_type,
+                "address": base_item.get("address", 0),
+                "len": max_len,
                 "unit_id": unit_id,
                 "description": None,
                 "formula": None,
                 "unit": None,
                 "min_value": None,
                 "max_value": None,
-                "sections": sections
+                "sections": "+".join(sections),
+                "merged_items": len(items)
             }
         except Exception as e:
-            logger.error(f"Error converting ThingsBoard item {item.get('tag', 'unknown')}: {e}")
+            logger.error(f"Error converting merged ThingsBoard items: {e}")
             return None
     
     @classmethod

@@ -89,8 +89,6 @@ class ModbusManager:
                     )
                     if is_open:
                         return True
-                elif hasattr(client, "connected") and client.connected:
-                    return True
             
             # If we reach here, connection is not healthy
             self.client_status[client_id] = False
@@ -114,19 +112,19 @@ class ModbusManager:
             
             if point_type == "coil":
                 result = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: client.read_coils(address, count=count, slave=unit_id)
+                    None, lambda: client.read_coils(address, count=count, device_id=unit_id)
                 )
             elif point_type == "input":
                 result = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: client.read_discrete_inputs(address, count=count, slave=unit_id)
+                    None, lambda: client.read_discrete_inputs(address, count=count, device_id=unit_id)
                 )
             elif point_type == "holding_register":
                 result = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: client.read_holding_registers(address, count=count, slave=unit_id)
+                    None, lambda: client.read_holding_registers(address, count=count, device_id=unit_id)
                 )
             elif point_type == "input_register":
                 result = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: client.read_input_registers(address, count=count, slave=unit_id)
+                    None, lambda: client.read_input_registers(address, count=count, device_id=unit_id)
                 )
             else:
                 raise ModbusReadException(f"Unsupported point type: {point_type}")
@@ -161,7 +159,7 @@ class ModbusManager:
                 if not isinstance(value, bool):
                     raise ModbusWriteException(f"Coil requires boolean value, got {type(value)}")
                 result = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: client.write_coil(address, value, slave=unit_id)
+                    None, lambda: client.write_coil(address, value, device_id=unit_id)
                 )
                 return [value]
                 
@@ -173,7 +171,7 @@ class ModbusManager:
                 # Convert float to int if needed
                 int_value = int(value)
                 result = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: client.write_register(address, int_value, slave=unit_id)
+                    None, lambda: client.write_register(address, int_value, device_id=unit_id)
                 )
                 return [int_value]
                 
