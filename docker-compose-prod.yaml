@@ -15,10 +15,10 @@ services:
     environment:
       - NODE_ENV=production
       - TZ=${TIMEZONE}
+      - HOSTNAME=${HOSTNAME}
       - FRONTEND_PORT=${FRONTEND_PORT}
       - BACKEND_PORT=${BACKEND_PORT}
       - PMA_PORT=${PMA_PORT}
-      - HOSTNAME=${HOSTNAME}
     user: root
     entrypoint: ["/docker-entrypoint.sh"]
     ports:
@@ -128,7 +128,7 @@ services:
       - MYSQL_PASSWORD=${DB_PASSWORD}
       - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
     volumes:
-      - db_data:/var/lib/mysql
+      - db-data:/var/lib/mysql
       - ./db/custom.cnf:/etc/mysql/conf.d/custom.cnf
       - ./db/scripts/init-test-db.sh:/docker-entrypoint-initdb.d/init-test-db.sh
       - ./db/scripts/backup.sh:/backup.sh
@@ -148,7 +148,7 @@ services:
       retries: 5
       
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin
+    image: phpmyadmin/phpmyadmin:5.2.2
     environment:
       - TZ=${TIMEZONE}
       - PMA_HOST=mariadb
@@ -162,10 +162,12 @@ services:
     restart: always
 
   redis:
-    image: redis:latest
+    image: redis:8.0.3
     environment:
       - TZ=${TIMEZONE}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
     depends_on:
       mariadb:
@@ -181,7 +183,8 @@ services:
       retries: 5
 
 volumes:
-  db_data:
+  db-data:
+  redis-data:
 
 networks:
   frontend-network:

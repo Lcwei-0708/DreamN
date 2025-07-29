@@ -1,49 +1,49 @@
 # Web framework & server
-fastapi[all]
-uvicorn
-gunicorn
-asgi-lifespan
-fastapi-limiter
+fastapi[all]==0.116.1
+uvicorn==0.35.0
+gunicorn==23.0.0
+asgi-lifespan==2.1.0
+fastapi-limiter==0.1.6
 
 # Database & ORM
-sqlalchemy[asyncio]
-alembic
+sqlalchemy[asyncio]==2.0.41
+alembic==1.16.4
 
 # Async drivers
-aiomysql
-pymysql
+aiomysql==0.2.0
+pymysql==1.1.1
 
 # Config & env
-python-dotenv
-pydantic
-pydantic-settings
+python-dotenv==1.1.1
+pydantic==2.11.7
+pydantic-settings==2.10.1
 
 # Security & auth
-python-jose
-passlib
-bcrypt
+python-jose==3.5.0
+passlib==1.7.4
+bcrypt==4.3.0
 
 # HTTP client
-requests
-httpx
+requests==2.32.4
+httpx==0.28.1
 
 # Testing
-pytest
-pytest-asyncio
-coverage 
-pytest-cov
+pytest==8.4.1
+pytest-asyncio==1.1.0
+coverage==7.10.1
+pytest-cov==6.2.1
 
 # Scheduler/Task
-apscheduler
+apscheduler==3.11.0
 
 # Redis
-redis
+redis==6.2.0
 
 # keycloak
-python-keycloak
+python-keycloak==5.7.0
 
 # Web push
-pywebpush
+pywebpush==2.0.3
 
 # Modbus
-pymodbus
+pymodbus==3.10.0
