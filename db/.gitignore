@@ -1,0 +1,16 @@
+# Database
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+*.db3
+*.db-journal
+*.db-lock
+*.db-wal
+*.db-shm
+*.db-trace
+*.db-trace.db
+*.db-trace.db-journal
+
+# Backup
+backups/
