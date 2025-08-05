@@ -13,6 +13,10 @@
 - 🐳 **Dockerized**: All services are containerized with Docker Compose for easy deployment.
 
 
+## System Architecture
+![System Architecture](./assets/ArchitectureDiagram.png)
+
+
 ## System Requirements
 
 | Component | Version | Description |
