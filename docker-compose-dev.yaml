@@ -19,7 +19,6 @@ services:
       - BACKEND_PORT=${BACKEND_PORT}
       - PMA_PORT=${PMA_PORT}
       - GRAFANA_PORT=${GRAFANA_PORT}
-    user: root
     entrypoint: ["/docker-entrypoint.sh"]
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_PORT}"
@@ -37,7 +36,7 @@ services:
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "nginx -t || exit 1"]
-      interval: 30s
+      interval: 5s
       timeout: 30s
       retries: 5
 
@@ -59,7 +58,6 @@ services:
       - VITE_KEYCLOAK_CLIENT=${KEYCLOAK_CLIENT}
       # Web push settings
       - VITE_VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
-    user: root
     command: ["sh", "./init-dev.sh"]
     depends_on:
       backend:
@@ -69,7 +67,7 @@ services:
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "curl --silent --fail localhost:3000 || exit 1"]
-      interval: 30s
+      interval: 5s
       timeout: 30s
       retries: 5
 
@@ -104,7 +102,6 @@ services:
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_EMAIL=${VAPID_EMAIL}
-    user: root
     command: ["sh", "./init-dev.sh"]
     depends_on:
       mariadb:
@@ -114,7 +111,7 @@ services:
     restart: always    
     healthcheck:
       test: ["CMD-SHELL", "curl --silent --fail localhost:5000 || exit 1"]
-      interval: 30s
+      interval: 5s
       timeout: 30s
       retries: 5
 
@@ -135,7 +132,6 @@ services:
       - ./db/scripts/backup.sh:/backup.sh
       - ./db/docker-entrypoint.sh:/docker-entrypoint.sh
       - ./db/backups:/backups
-    user: root
     entrypoint: ["/docker-entrypoint.sh"]
     command: ["mariadbd"]
     networks:
@@ -144,7 +140,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin --user=$${MYSQL_USER} --password=$${MYSQL_PASSWORD} --host=localhost ping"]
       start_period: 10s
-      interval: 30s
+      interval: 5s
       timeout: 30s
       retries: 5
       
@@ -179,7 +175,7 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping"]
       start_period: 10s
-      interval: 30s
+      interval: 5s
       timeout: 30s
       retries: 5
 
