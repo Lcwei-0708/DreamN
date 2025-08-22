@@ -65,18 +65,28 @@ async def update_current_user_info(token: str, update_data: dict):
     except Exception as e:
         raise ServerException(f"Update failed: {str(e)}")
 
-async def change_current_user_password(token: str, old_password: str, new_password: str):
+async def change_current_user_password(token: str, old_password: str, new_password: str, logout_all_devices: bool = True):
     user_id = await keycloak.get_user_id(token)
     try:
         userinfo = await keycloak_openid.a_userinfo(token)
         username = userinfo.get("preferred_username")
+        
         # Verify old password
         try:
             await keycloak_openid.a_token(username, old_password)
         except Exception as e:
             raise InvalidPasswordException("Old password is incorrect")
+        
         # Change new password
         await keycloak_admin.a_set_user_password(user_id, new_password, temporary=False)
+        
+        # 根據參數決定是否登出所有裝置
+        if logout_all_devices:
+            try:
+                await keycloak_admin.a_user_logout(user_id)
+            except Exception as e:
+                raise ServerException(f"Failed to logout all devices: {str(e)}")
+        
         return True
     except InvalidPasswordException:
         raise

@@ -21,3 +21,4 @@ class UpdateUserRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str = Field(..., description="舊密碼")
     new_password: str = Field(..., description="新密碼")
+    logout_all_devices: bool = Field(True, description="是否登出所有裝置")

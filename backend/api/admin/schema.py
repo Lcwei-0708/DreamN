@@ -50,6 +50,7 @@ class UpdateUserRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     password: str = Field(..., description="新密碼")
+    logout_all_devices: bool = Field(True, description="是否登出所有裝置")
 
 class RoleInfo(BaseModel):
     id: str = Field(..., description="角色 ID")

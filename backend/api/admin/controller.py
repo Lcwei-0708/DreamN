@@ -170,7 +170,11 @@ async def delete_users_batch(
 @keycloak.require_permission("admin")
 async def reset_password(user_id: str, payload: ResetPasswordRequest, request: Request, token: str = Depends(verify_token)):
     try:
-        await reset_user_password(user_id, payload.password)
+        await reset_user_password(
+            user_id, 
+            payload.password,
+            payload.logout_all_devices
+        )
         return APIResponse(code=200, message="Password reset successfully")
     except UserNotFoundException:
         raise HTTPException(status_code=404, detail="User not found")

@@ -246,10 +246,15 @@ async def delete_users(user_ids: List[str]) -> DeleteUsersResponse:
         results=results
     )
 
-async def reset_user_password(user_id: str, new_password: str) -> None:
+async def reset_user_password(user_id: str, new_password: str, logout_all_devices: bool = True) -> None:
     """Reset user password"""
     try:
         await keycloak_admin.a_set_user_password(user_id, new_password, temporary=True)
+        if logout_all_devices:
+            try:
+                await keycloak_admin.a_user_logout(user_id)
+            except Exception as e:
+                raise ServerException(f"Failed to logout all devices: {str(e)}")
     except Exception as e:
         error_str = str(e)
         if keycloak.is_keycloak_404_error(error_str):

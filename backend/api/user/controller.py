@@ -57,7 +57,12 @@ async def update_user(payload: UpdateUserRequest, token: str = Depends(verify_to
 )
 async def change_password(payload: ChangePasswordRequest, token: str = Depends(verify_token)):
     try:
-        await change_current_user_password(token, payload.old_password, payload.new_password)
+        await change_current_user_password(
+            token, 
+            payload.old_password, 
+            payload.new_password,
+            payload.logout_all_devices
+        )
         return APIResponse(code=200, message="Password changed successfully", data=None)
     except InvalidPasswordException:
         raise HTTPException(status_code=401, detail="Old password is incorrect")
