@@ -110,7 +110,7 @@ function Home() {
           )}
         >
           <Trans
-            i18nKey="Home.description"
+            i18nKey="App.description"
             components={{
               bold: <span className={cn("text-foreground font-semibold")} />,
             }}

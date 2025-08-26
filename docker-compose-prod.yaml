@@ -50,6 +50,9 @@ services:
       - NODE_ENV=production
       - TZ=${TIMEZONE}
       - SITE_URL=${SITE_URL}
+      # Basic settings
+      - VITE_PROJECT_NAME=${PROJECT_NAME}
+      - VITE_PROJECT_DESCRIPTION=${PROJECT_DESCRIPTION}
       # API settings
       - VITE_API_BASE_URL=https://${HOSTNAME}:${BACKEND_PORT}/api
       - VITE_WEBSOCKET_URL=wss://${HOSTNAME}:${BACKEND_PORT}/ws/
@@ -81,6 +84,9 @@ services:
       - TZ=${TIMEZONE}
       - SECRET_KEY=${SECRET_KEY}
       - LOG_LEVEL=${LOG_LEVEL}
+      # Basic settings
+      - PROJECT_NAME=${PROJECT_NAME}
+      - PROJECT_DESCRIPTION=${PROJECT_DESCRIPTION}
       # Database settings
       - DATABASE_URL=mysql+pymysql://${DB_USER}:${DB_PASSWORD}@mariadb/${DB_DATABASE}
       - DATABASE_URL_TEST=mysql+pymysql://${DB_USER}:${DB_PASSWORD}@mariadb/test_${DB_DATABASE}

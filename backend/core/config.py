@@ -8,9 +8,9 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Project settings
-    PROJECT_NAME: str = "DreamN"
+    PROJECT_NAME: str = "Backend API Docs"
     PROJECT_VERSION: str = "1.0.0"
-    PROJECT_DESCRIPTION: str = "DreamN is a full-stack web development boilerplate based on Docker, React, FastAPI, MariaDB, and Nginx."
+    PROJECT_DESCRIPTION: str = "Backend API Docs"
 
     # Database settings
     DATABASE_URL: str

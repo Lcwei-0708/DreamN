@@ -1,5 +1,5 @@
 {
-  "Home": {
+  "App": {
     "title": "DreamN",
     "description": "DreamN 是一個基於 <bold>Docker</bold>、<bold>React</bold>、<bold>FastAPI</bold>、<bold>MariaDB</bold> 和 <bold>Nginx</bold> 的全端網頁開發模板。"
   },
