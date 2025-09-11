@@ -47,3 +47,6 @@ pywebpush==2.0.3
 
 # Modbus
 pymodbus==3.10.0
+
+# InfluxDB
+influxdb-client==1.49.0

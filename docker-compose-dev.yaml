@@ -19,12 +19,14 @@ services:
       - BACKEND_PORT=${BACKEND_PORT}
       - PMA_PORT=${PMA_PORT}
       - GRAFANA_PORT=${GRAFANA_PORT}
+      - INFLUXDB_PORT=${INFLUXDB_PORT}
     entrypoint: ["/docker-entrypoint.sh"]
     ports:
       - "${FRONTEND_PORT}:${FRONTEND_PORT}"
       - "${BACKEND_PORT}:${BACKEND_PORT}"
       - "${PMA_PORT}:${PMA_PORT}"
       - "${GRAFANA_PORT}:${GRAFANA_PORT}"
+      - "${INFLUXDB_PORT}:${INFLUXDB_PORT}"
     depends_on:
       frontend:
         condition: service_healthy
@@ -108,15 +110,46 @@ services:
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_EMAIL=${VAPID_EMAIL}
+      # InfluxDB settings
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - INFLUXDB_ORG=${INFLUXDB_ORG}
+      - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
+      - INFLUXDB_TIMEOUT=${INFLUXDB_TIMEOUT}
     command: ["sh", "./init-dev.sh"]
     depends_on:
       mariadb:
+        condition: service_healthy
+      influxdb:
         condition: service_healthy
     networks:
       - backend-network
     restart: always    
     healthcheck:
       test: ["CMD-SHELL", "curl --silent --fail localhost:5000 || exit 1"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+
+  influxdb:
+    image: influxdb:2.7.12
+    environment:
+      - TZ=${TIMEZONE}
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USERNAME}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    networks:
+      - backend-network
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail http://localhost:8086/health || exit 1"]
+      start_period: 10s
       interval: 5s
       timeout: 30s
       retries: 5
@@ -243,6 +276,7 @@ services:
     user: root
     depends_on:
       - loki
+      - influxdb
     networks:
       - backend-network
       - frontend-network
@@ -257,6 +291,8 @@ volumes:
   loki-tsdb-data:
   loki-tsdb-index-data:
   loki-tsdb-cache-data:
+  influxdb-data:
+  influxdb-config:
   grafana-data:
 
 networks:

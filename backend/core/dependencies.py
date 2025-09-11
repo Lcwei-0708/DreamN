@@ -4,7 +4,7 @@ from utils import get_real_ip
 from utils.response import APIResponse
 from fastapi import Request, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.database import AsyncSessionLocal, SessionLocal
+from core.database import AsyncSessionLocal, SessionLocal, get_influxdb
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,15 @@ def get_sync_db():
         raise e
     finally:
         db.close()
+
+# InfluxDB dependency
+def get_influxdb_client():
+    try:
+        influxdb = get_influxdb()
+        yield influxdb
+    except Exception as e:
+        logger.error(f"InfluxDB error: {e}")
+        raise e
 
 # Rate limit on auth fail
 async def rate_limit_on_auth_fail(request: Request):

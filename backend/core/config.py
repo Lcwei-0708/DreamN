@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str
     VAPID_EMAIL: str
 
+    # InfluxDB settings
+    INFLUXDB_URL: str
+    INFLUXDB_TOKEN: str
+    INFLUXDB_ORG: str
+    INFLUXDB_BUCKET: str
+    INFLUXDB_TIMEOUT: int = 10
+
 # Create a settings instance to be imported elsewhere
 settings = Settings()
 

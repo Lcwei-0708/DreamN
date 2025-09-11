@@ -1,6 +1,7 @@
 from core.database import engine
 from .websocket_schedule import WebSocketSchedule
 from .modbus_schedule import ModbusSchedule
+from .influxdb_collector import InfluxDBCollector
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -15,6 +16,7 @@ scheduler = AsyncIOScheduler(jobstores=jobstores, executors=executors)
 
 websocket_schedule = WebSocketSchedule()
 modbus_schedule = ModbusSchedule()
+influxdb_collector = InfluxDBCollector()
 
 def register_schedules():
     # WebSocket related tasks
@@ -61,6 +63,15 @@ def register_schedules():
         "interval",
         seconds=60,
         id="modbus_health_check_connections",
+        replace_existing=True,
+        max_instances=1
+    )
+
+    scheduler.add_job(
+        influxdb_collector.collect_and_write_data,
+        "interval",
+        seconds=10,
+        id="influxdb_collect_modbus_data",
         replace_existing=True,
         max_instances=1
     )
