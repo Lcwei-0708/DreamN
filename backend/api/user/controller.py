@@ -1,6 +1,6 @@
+from core.dependencies import get_db
 from core.security import verify_token
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.dependencies import get_db, rate_limit_on_auth_fail
 from fastapi import APIRouter, Depends, HTTPException, Request
 from .schema import UserInfo, ChangePasswordRequest, UpdateUserRequest
 from utils.response import APIResponse, parse_responses, common_responses
@@ -15,8 +15,7 @@ router = APIRouter(tags=["user"])
     summary="Get current user info",
     responses=parse_responses({
         200: ("User info retrieved successfully", UserInfo)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 async def get_user_info(request: Request, token: str = Depends(verify_token), db: AsyncSession = Depends(get_db)):
     try:

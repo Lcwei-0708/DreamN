@@ -1,6 +1,6 @@
+from core.dependencies import get_db
 from core.security import verify_token
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.dependencies import get_db, rate_limit_on_auth_fail
 from fastapi import APIRouter, Depends, HTTPException, Request
 from utils.response import APIResponse, parse_responses, common_responses
 from .services import ( 
@@ -61,8 +61,7 @@ async def webpush_subscriptions_list(
     responses=parse_responses({
         200: ("Subscribe successfully", WebPushSubscriptionResponse),
         404: ("User not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 async def subscribe(
     request: Request,
@@ -98,8 +97,7 @@ async def subscribe(
     responses=parse_responses({
         200: ("Unsubscribe successfully", None),
         404: ("Subscription not found / User not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 async def unsubscribe(
     req: WebPushUnsubscribeRequest,

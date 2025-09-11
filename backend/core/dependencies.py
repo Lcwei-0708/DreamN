@@ -38,12 +38,3 @@ def get_influxdb_client():
     except Exception as e:
         logger.error(f"InfluxDB error: {e}")
         raise e
-
-# Rate limit on auth fail
-async def rate_limit_on_auth_fail(request: Request):
-    redis = get_redis()
-    ip = get_real_ip(request)
-    block_key = f"block:{ip}"
-    if await redis.exists(block_key):
-        resp = APIResponse(code=429, message="Too many failed attempts. Try again later.", data=None)
-        raise HTTPException(status_code=429, detail=resp.message)

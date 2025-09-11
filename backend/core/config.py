@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     FAIL_LIMIT: int = 10  # Failed attempts limit
     FAIL_WINDOW: int = 600  # Failed attempts window (seconds), e.g. 10 minutes
     BLOCK_TIME: int = 1800  # Block time (seconds), e.g. 30 minutes
-
+    
     # Keycloak settings
     KEYCLOAK_SERVER_URL: str
     KEYCLOAK_REALM: str

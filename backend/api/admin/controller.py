@@ -1,8 +1,8 @@
 from typing import Optional, Union
+from core.dependencies import get_db
 from core.security import verify_token
 from extensions.keycloak import get_keycloak
 from sqlalchemy.ext.asyncio import AsyncSession
-from core.dependencies import get_db, rate_limit_on_auth_fail
 from utils.response import APIResponse, parse_responses, common_responses
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, Body
 from .schema import (
@@ -36,8 +36,7 @@ router = APIRouter(tags=["admin"])
     responses=parse_responses({
         200: ("Successfully retrieved users", UserPagination),
         404: ("User not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def get_users(
@@ -77,8 +76,7 @@ async def get_users(
     responses=parse_responses({
         200: ("User created successfully", CreateUserResponse),
         409: ("Email already exists", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def create_new_user(payload: CreateUserRequest, request: Request, token: str = Depends(verify_token)):
@@ -101,8 +99,7 @@ async def create_new_user(payload: CreateUserRequest, request: Request, token: s
         200: ("User updated successfully", None),
         404: ("User not found", None),
         409: ("Email already exists", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def update_user_info(user_id: str, payload: UpdateUserRequest, request: Request, token: str = Depends(verify_token)):
@@ -127,8 +124,7 @@ async def update_user_info(user_id: str, payload: UpdateUserRequest, request: Re
         200: ("All users deleted successfully", None),
         207: ("Delete users partial success", DeleteUsersResponse, delete_users_response_example),
         400: ("All users failed to delete", DeleteUsersFailedResponse, delete_users_failed_response_example)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def delete_users_batch(
@@ -167,8 +163,7 @@ async def delete_users_batch(
     responses=parse_responses({
         200: ("Password reset successfully", None),
         404: ("User not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def reset_password(user_id: str, payload: ResetPasswordRequest, request: Request, token: str = Depends(verify_token)):
@@ -193,8 +188,7 @@ async def reset_password(user_id: str, payload: ResetPasswordRequest, request: R
     responses=parse_responses({
         200: ("Successfully retrieved roles", RoleList),
         404: ("Role not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def get_roles(request: Request, token: str = Depends(verify_token)):
@@ -214,8 +208,7 @@ async def get_roles(request: Request, token: str = Depends(verify_token)):
     responses=parse_responses({
         200: ("Role created successfully", CreateRoleResponse),
         409: ("Role name already exists", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def create_new_role(payload: CreateRoleRequest, request: Request, token: str = Depends(verify_token)):
@@ -237,8 +230,7 @@ async def create_new_role(payload: CreateRoleRequest, request: Request, token: s
     responses=parse_responses({
         200: ("Role updated successfully", None),
         404: ("Role not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def update_role_info(role_name: str, payload: UpdateRoleRequest, request: Request, token: str = Depends(verify_token)):
@@ -260,8 +252,7 @@ async def update_role_info(role_name: str, payload: UpdateRoleRequest, request: 
     responses=parse_responses({
         200: ("Role attributes updated successfully", None),
         404: ("Role not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def update_role_attributes_api(role_name: str, payload: RoleAttributesUpdateRequest, request: Request, token: str = Depends(verify_token)):
@@ -283,8 +274,7 @@ async def update_role_attributes_api(role_name: str, payload: RoleAttributesUpda
     responses=parse_responses({
         200: ("Role deleted successfully", None),
         404: ("Role not found", None)
-    }, default=common_responses),
-    dependencies=[Depends(rate_limit_on_auth_fail)]
+    }, default=common_responses)
 )
 @keycloak.require_permission(["admin"])
 async def delete_role_by_name(role_name: str, request: Request, token: str = Depends(verify_token)):
