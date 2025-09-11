@@ -1,6 +1,6 @@
 import math
-import re
-from typing import Optional, List, Dict, Any
+from core.config import settings
+from typing import Optional, List
 from websocket.manager import get_manager
 from extensions.keycloak import get_keycloak
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +9,8 @@ from utils.custom_exception import (
     EmailAlreadyExistsException,
     RoleNotFoundException,
     RoleAlreadyExistsException,
-    ServerException
+    ServerException,
+    SuperRoleOperationException
 )
 from .schema import (UserInfo, 
     UserPagination, 
@@ -29,6 +30,10 @@ keycloak = get_keycloak()
 keycloak_openid = keycloak.keycloak_openid
 keycloak_admin = keycloak.keycloak_admin
 
+def has_super_role(user_roles: List[str]) -> bool:
+    """Check if user has super role"""
+    return settings.KEYCLOAK_SUPER_ROLE in user_roles
+
 async def get_all_users(
     db: AsyncSession,
     name: Optional[str] = None,
@@ -47,10 +52,16 @@ async def get_all_users(
         
         # Process each user data
         for user in users:
-            # Get custom_roles
-            custom_roles = []
-            if user.get("attributes") and "roles" in user["attributes"]:
-                custom_roles = [r for r in user["attributes"]["roles"] if keycloak.is_custom_role(r)]
+            # Get user's realm roles
+            user_roles = await keycloak_admin.a_get_realm_roles_of_user(user["id"])
+            realm_role_names = [role["name"] for role in user_roles]
+            
+            # Filter custom roles only
+            custom_roles = [r for r in realm_role_names if keycloak.is_custom_role(r)]
+            
+            # Skip users with super role
+            if has_super_role(custom_roles):
+                continue
             
             # Get last login status and time
             _, last_login_dt = await ws_manager.get_user_last_ws_login(user["id"], db)
@@ -147,6 +158,10 @@ async def get_all_users(
 async def create_user(user_data: CreateUserRequest) -> CreateUserResponse:
     """Create a new user"""
     try:
+        # Check if trying to assign super role
+        if user_data.roles and settings.KEYCLOAK_SUPER_ROLE in user_data.roles:
+            raise SuperRoleOperationException("Cannot assign super role to new user")
+        
         # Prepare attributes
         attributes = {}
         if user_data.phone:
@@ -172,6 +187,8 @@ async def create_user(user_data: CreateUserRequest) -> CreateUserResponse:
         
         user_id = await keycloak_admin.a_create_user(user_payload)
         return CreateUserResponse(user_id=user_id)
+    except SuperRoleOperationException:
+        raise
     except Exception as e:
         if "exists" in str(e).lower():
             raise EmailAlreadyExistsException("username or email", f"{user_data.username}/{user_data.email}")
@@ -180,10 +197,22 @@ async def create_user(user_data: CreateUserRequest) -> CreateUserResponse:
 async def update_user(user_id: str, user_data: UpdateUserRequest) -> None:
     """Update user information"""
     try:
+        # Check if user has super role
+        current_user = await keycloak_admin.a_get_user(user_id)
+        user_roles = await keycloak_admin.a_get_realm_roles_of_user(user_id)
+        current_roles = [role["name"] for role in user_roles]
+        custom_roles = [r for r in current_roles if keycloak.is_custom_role(r)]
+        
+        if has_super_role(custom_roles):
+            raise SuperRoleOperationException("Cannot modify super role user")
+        
+        # Check if trying to assign super role
+        if hasattr(user_data, 'roles') and user_data.roles and settings.KEYCLOAK_SUPER_ROLE in user_data.roles:
+            raise SuperRoleOperationException("Cannot assign super role to user")
+        
         update_payload = user_data.dict(exclude_unset=True)
         # Check if email has changed
         if "email" in update_payload:
-            current_user = await keycloak_admin.a_get_user(user_id)
             current_email = current_user.get("email")
             new_email = update_payload["email"]
             if new_email and new_email != current_email:
@@ -201,6 +230,8 @@ async def update_user(user_id: str, user_data: UpdateUserRequest) -> None:
                 update_payload.setdefault("attributes", {})
                 update_payload["attributes"]["phone"] = []
         await keycloak_admin.a_update_user(user_id, update_payload)
+    except SuperRoleOperationException:
+        raise
     except EmailAlreadyExistsException:
         raise
     except Exception as e:
@@ -215,6 +246,19 @@ async def delete_users(user_ids: List[str]) -> DeleteUsersResponse:
     
     for user_id in user_ids:
         try:
+            # Check if user has super role
+            user_roles = await keycloak_admin.a_get_realm_roles_of_user(user_id)
+            current_roles = [role["name"] for role in user_roles]
+            custom_roles = [r for r in current_roles if keycloak.is_custom_role(r)]
+            
+            if has_super_role(custom_roles):
+                results.append({
+                    "id": user_id,
+                    "status": "error",
+                    "message": "Cannot delete super role user"
+                })
+                continue
+            
             await keycloak_admin.a_delete_user(user_id)
             results.append({
                 "id": user_id,
@@ -249,12 +293,22 @@ async def delete_users(user_ids: List[str]) -> DeleteUsersResponse:
 async def reset_user_password(user_id: str, new_password: str, logout_all_devices: bool = True) -> None:
     """Reset user password"""
     try:
+        # Check if user has super role
+        user_roles = await keycloak_admin.a_get_realm_roles_of_user(user_id)
+        current_roles = [role["name"] for role in user_roles]
+        custom_roles = [r for r in current_roles if keycloak.is_custom_role(r)]
+        
+        if has_super_role(custom_roles):
+            raise SuperRoleOperationException("Cannot reset password for super role user")
+        
         await keycloak_admin.a_set_user_password(user_id, new_password, temporary=True)
         if logout_all_devices:
             try:
                 await keycloak_admin.a_user_logout(user_id)
             except Exception as e:
                 raise ServerException(f"Failed to logout all devices: {str(e)}")
+    except SuperRoleOperationException:
+        raise
     except Exception as e:
         error_str = str(e)
         if keycloak.is_keycloak_404_error(error_str):
@@ -269,6 +323,11 @@ async def get_all_roles() -> RoleList:
         for role in roles:
             if not keycloak.is_custom_role(role["name"]):
                 continue
+            
+            # Skip super role
+            if role["name"] == settings.KEYCLOAK_SUPER_ROLE:
+                continue
+            
             full_role = await keycloak_admin.a_get_realm_role(role["name"])
             role_info = RoleInfo(
                 id=role["id"],
@@ -284,12 +343,18 @@ async def get_all_roles() -> RoleList:
 async def create_role(role_data: CreateRoleRequest) -> CreateRoleResponse:
     """Create a new role"""
     try:
+        # Check if trying to create super role
+        if role_data.name == settings.KEYCLOAK_SUPER_ROLE:
+            raise SuperRoleOperationException("Cannot create super role")
+        
         role_payload = {
             "name": role_data.name,
             "description": role_data.description,
         }
         await keycloak_admin.a_create_realm_role(role_payload)
         return CreateRoleResponse(role_name=role_data.name)
+    except SuperRoleOperationException:
+        raise
     except Exception as e:
         error_str = str(e)
         if keycloak.is_keycloak_409_error(error_str):
@@ -299,12 +364,18 @@ async def create_role(role_data: CreateRoleRequest) -> CreateRoleResponse:
 async def update_role(role_name: str, role_data: UpdateRoleRequest) -> None:
     """Update role description only"""
     try:
+        # Check if trying to update super role
+        if role_name == settings.KEYCLOAK_SUPER_ROLE:
+            raise SuperRoleOperationException("Cannot update super role")
+        
         existing_role = await keycloak_admin.a_get_realm_role(role_name)
         update_payload = {
             "name": role_name,
             "description": role_data.description if role_data.description is not None else existing_role.get("description"),
         }
         await keycloak_admin.a_update_realm_role(role_name, update_payload)
+    except SuperRoleOperationException:
+        raise
     except Exception as e:
         error_str = str(e)
         if keycloak.is_keycloak_404_error(error_str):
@@ -314,6 +385,10 @@ async def update_role(role_name: str, role_data: UpdateRoleRequest) -> None:
 async def update_role_attributes(role_name: str, attributes: dict) -> None:
     """Update role attributes only - merge with existing attributes"""
     try:
+        # Check if trying to update super role
+        if role_name == settings.KEYCLOAK_SUPER_ROLE:
+            raise SuperRoleOperationException("Cannot update super role attributes")
+        
         existing_role = await keycloak_admin.a_get_realm_role(role_name)        
         existing_attributes = existing_role.get("attributes", {})
         
@@ -332,6 +407,8 @@ async def update_role_attributes(role_name: str, attributes: dict) -> None:
         update_payload = {k: v for k, v in update_payload.items() if v is not None}
         
         await keycloak_admin.a_update_realm_role(role_name, update_payload)
+    except SuperRoleOperationException:
+        raise
     except Exception as e:
         error_str = str(e)
         if keycloak.is_keycloak_404_error(error_str):
@@ -341,7 +418,13 @@ async def update_role_attributes(role_name: str, attributes: dict) -> None:
 async def delete_role(role_name: str) -> None:
     """Delete role"""
     try:
+        # Check if trying to delete super role
+        if role_name == settings.KEYCLOAK_SUPER_ROLE:
+            raise SuperRoleOperationException("Cannot delete super role")
+        
         await keycloak_admin.a_delete_realm_role(role_name)
+    except SuperRoleOperationException:
+        raise
     except Exception as e:
         error_str = str(e)
         if keycloak.is_keycloak_404_error(error_str):

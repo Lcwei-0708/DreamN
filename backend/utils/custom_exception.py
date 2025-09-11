@@ -149,3 +149,9 @@ class ModbusPointDuplicateException(BaseServiceException):
     def __init__(self, message: str = None, details: Dict[str, Any] = None):
         message = f"{message}" if message else "Point with same unit_id, address, and type already exists"
         super().__init__(message, "MODBUS_POINT_DUPLICATE", details, status_code=409, log_level="warning")
+
+class SuperRoleOperationException(BaseServiceException):
+    """Super role operation not allowed exception"""
+    def __init__(self, message: str = None, details: Dict[str, Any] = None):
+        message = f"{message}" if message else "Super role operation not allowed"
+        super().__init__(message, "SUPER_ROLE_OPERATION_NOT_ALLOWED", details, status_code=403, log_level="warning")

@@ -130,6 +130,14 @@ export const useKeycloak = () => {
     return [...realmRoles, ...clientRoles];
   }, [keycloak, getClientRoles]);
 
+  // Check if user has super role
+  const hasSuperRole = useCallback((keycloakInstance = keycloak) => {
+    if (!keycloakInstance?.authenticated) return false;
+    
+    const userRoles = getUserRoles(keycloakInstance);
+    return userRoles.includes(ENV.KEYCLOAK.SUPER_ROLE);
+  }, [keycloak, getUserRoles]);
+
   // New: Determine custom role
   const isCustomRole = (roleName) => {
     const defaultRoles = [
@@ -157,13 +165,22 @@ export const useKeycloak = () => {
       debugLog('Filtered user roles:', filteredRoles);
       debugLog('User role permissions:', roleAttributesFromToken);
 
+      // Check if has super role
+      const hasSuper = hasSuperRole(keycloakInstance);
+      
       // Check if has two-shoulder privileged role
       const hasTwoShoulder = userRoles.includes("two-shoulder");
 
       // Permission merge
       let mergedPermissions = {};
 
-      if (hasTwoShoulder) {
+      if (hasSuper) {
+        // Super role: all permissions true
+        Object.keys(roleAttributesFromToken).forEach(module => {
+          mergedPermissions[module] = true;
+        });
+        debugLog('Super role user, all permissions enabled.');
+      } else if (hasTwoShoulder) {
         // two-shoulder: all permissions true
         Object.keys(roleAttributesFromToken).forEach(module => {
           mergedPermissions[module] = true;
@@ -207,7 +224,7 @@ export const useKeycloak = () => {
       
       return {};
     }
-  }, [keycloak, getUserRoles]);
+  }, [keycloak, getUserRoles, hasSuperRole]);
 
   // Load user info
   const loadUserInfo = useCallback(async (keycloakInstance = keycloak) => {
@@ -225,6 +242,7 @@ export const useKeycloak = () => {
         roles: getUserRoles(keycloakInstance),
         realmRoles: keycloakInstance.realmAccess?.roles || [],
         clientRoles: getClientRoles(keycloakInstance),
+        hasSuperRole: hasSuperRole(keycloakInstance),
       };
       
       if (isMountedRef.current) {
@@ -242,7 +260,7 @@ export const useKeycloak = () => {
       
       return null;
     }
-  }, [keycloak, getUserRoles, getClientRoles]);
+  }, [keycloak, getUserRoles, getClientRoles, hasSuperRole]);
 
   // Setup token auto-refresh
   const setupTokenRefresh = useCallback((keycloakInstance = keycloak) => {
@@ -416,10 +434,15 @@ export const useKeycloak = () => {
       return false;
     }
 
+    // Check if user has super role first
+    if (hasSuperRole()) {
+      return true;
+    }
+
     const hasPermission = permissions[moduleName] === true;
     
     return hasPermission;
-  }, [authenticated, permissions]);
+  }, [authenticated, permissions, hasSuperRole]);
 
   // Logout - Enhanced with complete cleanup
   const logout = useCallback(async (options = {}) => {
@@ -599,6 +622,7 @@ export const useKeycloak = () => {
     // Permission related
     hasModulePermission,
     getUserRoles,
+    hasSuperRole,
 
     // Initialization
     initKeycloak,

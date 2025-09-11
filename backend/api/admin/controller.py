@@ -1,10 +1,10 @@
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, Union
 from core.security import verify_token
 from extensions.keycloak import get_keycloak
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.dependencies import get_db, rate_limit_on_auth_fail
-from fastapi import APIRouter, Depends, HTTPException, Request, Query, Body
 from utils.response import APIResponse, parse_responses, common_responses
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, Body
 from .schema import (
     UserPagination, UserSortBy,
     CreateUserRequest, UpdateUserRequest, ResetPasswordRequest,
@@ -22,12 +22,11 @@ from utils.custom_exception import (
     UserNotFoundException,
     RoleNotFoundException,
     RoleAlreadyExistsException,
-    EmailAlreadyExistsException
+    EmailAlreadyExistsException,
+    SuperRoleOperationException
 )
-from fastapi.responses import JSONResponse
 
 keycloak = get_keycloak()
-
 router = APIRouter(tags=["admin"])
 
 @router.get(
@@ -40,7 +39,7 @@ router = APIRouter(tags=["admin"])
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def get_users(
     request: Request,
     token: str = Depends(verify_token),
@@ -81,11 +80,13 @@ async def get_users(
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def create_new_user(payload: CreateUserRequest, request: Request, token: str = Depends(verify_token)):
     try:
         user_id = await create_user(payload)
         return APIResponse(code=200, message="User created successfully", data=user_id)
+    except SuperRoleOperationException:
+        raise HTTPException(status_code=403)
     except EmailAlreadyExistsException:
         raise HTTPException(status_code=409, detail="Email already exists")
     except Exception:
@@ -103,11 +104,13 @@ async def create_new_user(payload: CreateUserRequest, request: Request, token: s
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def update_user_info(user_id: str, payload: UpdateUserRequest, request: Request, token: str = Depends(verify_token)):
     try:
         await update_user(user_id, payload)
         return APIResponse(code=200, message="User updated successfully")
+    except SuperRoleOperationException:
+        raise HTTPException(status_code=403)
     except UserNotFoundException:
         raise HTTPException(status_code=404, detail="User not found")
     except EmailAlreadyExistsException:
@@ -127,7 +130,7 @@ async def update_user_info(user_id: str, payload: UpdateUserRequest, request: Re
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def delete_users_batch(
     request: Request, 
     payload: DeleteUsersRequest = Body(...),
@@ -167,7 +170,7 @@ async def delete_users_batch(
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def reset_password(user_id: str, payload: ResetPasswordRequest, request: Request, token: str = Depends(verify_token)):
     try:
         await reset_user_password(
@@ -176,6 +179,8 @@ async def reset_password(user_id: str, payload: ResetPasswordRequest, request: R
             payload.logout_all_devices
         )
         return APIResponse(code=200, message="Password reset successfully")
+    except SuperRoleOperationException:
+        raise HTTPException(status_code=403)
     except UserNotFoundException:
         raise HTTPException(status_code=404, detail="User not found")
     except Exception:
@@ -191,7 +196,7 @@ async def reset_password(user_id: str, payload: ResetPasswordRequest, request: R
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def get_roles(request: Request, token: str = Depends(verify_token)):
     try:
         roles = await get_all_roles()
@@ -212,11 +217,13 @@ async def get_roles(request: Request, token: str = Depends(verify_token)):
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def create_new_role(payload: CreateRoleRequest, request: Request, token: str = Depends(verify_token)):
     try:
         role_name = await create_role(payload)
         return APIResponse(code=200, message="Role created successfully", data=role_name)
+    except SuperRoleOperationException:
+        raise HTTPException(status_code=403)
     except RoleAlreadyExistsException:
         raise HTTPException(status_code=409, detail="Role name already exists")
     except Exception:
@@ -233,11 +240,13 @@ async def create_new_role(payload: CreateRoleRequest, request: Request, token: s
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def update_role_info(role_name: str, payload: UpdateRoleRequest, request: Request, token: str = Depends(verify_token)):
     try:
         await update_role(role_name, payload)
         return APIResponse(code=200, message="Role updated successfully")
+    except SuperRoleOperationException:
+        raise HTTPException(status_code=403)
     except RoleNotFoundException:
         raise HTTPException(status_code=404, detail="Role not found")
     except Exception:
@@ -254,11 +263,13 @@ async def update_role_info(role_name: str, payload: UpdateRoleRequest, request: 
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def update_role_attributes_api(role_name: str, payload: RoleAttributesUpdateRequest, request: Request, token: str = Depends(verify_token)):
     try:
         await update_role_attributes(role_name, payload.attributes)
         return APIResponse(code=200, message="Role attributes updated successfully")
+    except SuperRoleOperationException:
+        raise HTTPException(status_code=403)
     except RoleNotFoundException:
         raise HTTPException(status_code=404, detail="Role not found")
     except Exception:
@@ -275,11 +286,13 @@ async def update_role_attributes_api(role_name: str, payload: RoleAttributesUpda
     }, default=common_responses),
     dependencies=[Depends(rate_limit_on_auth_fail)]
 )
-@keycloak.require_permission("admin")
+@keycloak.require_permission(["admin"])
 async def delete_role_by_name(role_name: str, request: Request, token: str = Depends(verify_token)):
     try:
         await delete_role(role_name)
         return APIResponse(code=200, message="Role deleted successfully")
+    except SuperRoleOperationException:
+        raise HTTPException(status_code=403)
     except RoleNotFoundException:
         raise HTTPException(status_code=404, detail="Role not found")
     except Exception:

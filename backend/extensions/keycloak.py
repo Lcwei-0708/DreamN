@@ -1,9 +1,9 @@
 import re
 import logging
-from typing import Optional
 from functools import wraps
 from core.config import settings
 from fastapi import HTTPException
+from typing import Optional, List, Union
 from keycloak import KeycloakAdmin, KeycloakOpenID
 
 class KeycloakExtension:
@@ -31,8 +31,13 @@ class KeycloakExtension:
             verify=self.verify
         )
 
-    def require_permission(self, module_name: str):
+    def require_permission(self, role_attributes: Union[str, List[str]]):
         logger = logging.getLogger("keycloak_permission")
+        
+        # Convert single string to list for consistent handling
+        if isinstance(role_attributes, str):
+            role_attributes = [role_attributes]
+        
         def decorator(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
@@ -46,14 +51,25 @@ class KeycloakExtension:
                 user_roles = await self.keycloak_admin.a_get_realm_roles_of_user(user_id)
                 logger.info(f"{user_id}: {user_roles}")
 
+                # Check if user has super role - if yes, grant all permissions
+                for role in user_roles:
+                    if role["name"] == settings.KEYCLOAK_SUPER_ROLE:
+                        logger.info(f"Super role user {user_id} granted access to role attributes {role_attributes}")
+                        return await func(*args, **kwargs)
+
+                # Check role-specific permissions - user needs at least one of the required attributes
                 for role in user_roles:
                     role_name = role["name"]
                     role_info = await self.keycloak_admin.a_get_realm_role(role_name)
                     attributes = role_info.get("attributes", {})
-                    if attributes.get(module_name, False):
-                        return await func(*args, **kwargs)
+                    
+                    # Check if user has any of the required role attributes
+                    for required_attribute in role_attributes:
+                        if attributes.get(required_attribute, False):
+                            logger.info(f"User {user_id} granted access via role {role_name} with attribute {required_attribute}")
+                            return await func(*args, **kwargs)
 
-                logger.info(f"Permission denied for user {user_id} on module {module_name}. Checked roles: {[r['name'] for r in user_roles]}")
+                logger.info(f"Permission denied for user {user_id} on role attributes {role_attributes}. Checked roles: {[r['name'] for r in user_roles]}")
                 raise HTTPException(status_code=403)
             return wrapper
         return decorator

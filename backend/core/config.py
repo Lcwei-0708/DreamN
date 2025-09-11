@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     KEYCLOAK_ADMIN_CLIENT: str
     KEYCLOAK_ADMIN_CLIENT_SECRET: str
     KEYCLOAK_VERIFY: bool = False
+    KEYCLOAK_SUPER_ROLE: str = "tsadmin"
 
     # Web push settings
     VAPID_PUBLIC_KEY: str

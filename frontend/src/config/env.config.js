@@ -11,6 +11,7 @@ export  const ENV = {
       SERVER_URL: import.meta.env.VITE_KEYCLOAK_SERVER_URL,
       REALM: import.meta.env.VITE_KEYCLOAK_REALM,
       CLIENT: import.meta.env.VITE_KEYCLOAK_CLIENT,
+      SUPER_ROLE: import.meta.env.VITE_KEYCLOAK_SUPER_ROLE || 'tsadmin',
     },
     WEBSOCKET: {
       URL: import.meta.env.VITE_WEBSOCKET_URL,
