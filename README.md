@@ -1,5 +1,8 @@
 # DreamN
 
+[![Testing Pipeline](https://github.com/Lcwei-0708/DreamN/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Lcwei-0708/DreamN/actions/workflows/ci-cd.yml)
+[![Coverage](https://coverage-badge.samuelcolvin.workers.dev/Lcwei-0708/DreamN.svg)](https://coverage-badge.samuelcolvin.workers.dev/redirect/Lcwei-0708/DreamN)
+
 **DreamN** is a containerized fullstack web development template that uses **Docker Compose** to integrate **React**, **FastAPI**, **MariaDB**, and **Nginx**. It provides clear separation between frontend and backend services, helping you quickly build and deploy web applications while maintaining clear architecture and easy maintenance.
 
 
