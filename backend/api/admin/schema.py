@@ -37,6 +37,7 @@ class CreateUserRequest(BaseModel):
     phone: Optional[str] = Field(None, max_length=20, description="電話")
     password: str = Field(..., min_length=6, description="密碼")
     enabled: bool = Field(True, description="帳號是否啟用")
+    roles: List[str] = Field(default_factory=list, description="角色列表")
 
 class CreateUserResponse(BaseModel):
     user_id: str = Field(..., description="使用者 ID")

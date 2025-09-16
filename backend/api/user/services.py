@@ -80,7 +80,7 @@ async def change_current_user_password(token: str, old_password: str, new_passwo
         # Change new password
         await keycloak_admin.a_set_user_password(user_id, new_password, temporary=False)
         
-        # 根據參數決定是否登出所有裝置
+        # Logout all devices
         if logout_all_devices:
             try:
                 await keycloak_admin.a_user_logout(user_id)

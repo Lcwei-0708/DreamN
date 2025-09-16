@@ -31,9 +31,7 @@ class KeycloakExtension:
             verify=self.verify
         )
 
-    def require_permission(self, role_attributes: Union[str, List[str]]):
-        logger = logging.getLogger("keycloak_permission")
-        
+    def require_permission(self, role_attributes: Union[str, List[str]]):        
         # Convert single string to list for consistent handling
         if isinstance(role_attributes, str):
             role_attributes = [role_attributes]
@@ -49,12 +47,10 @@ class KeycloakExtension:
                     raise HTTPException(status_code=401)
 
                 user_roles = await self.keycloak_admin.a_get_realm_roles_of_user(user_id)
-                logger.info(f"{user_id}: {user_roles}")
 
                 # Check if user has super role - if yes, grant all permissions
                 for role in user_roles:
                     if role["name"] == settings.KEYCLOAK_SUPER_ROLE:
-                        logger.info(f"Super role user {user_id} granted access to role attributes {role_attributes}")
                         return await func(*args, **kwargs)
 
                 # Check role-specific permissions - user needs at least one of the required attributes
@@ -66,10 +62,8 @@ class KeycloakExtension:
                     # Check if user has any of the required role attributes
                     for required_attribute in role_attributes:
                         if attributes.get(required_attribute, False):
-                            logger.info(f"User {user_id} granted access via role {role_name} with attribute {required_attribute}")
                             return await func(*args, **kwargs)
 
-                logger.info(f"Permission denied for user {user_id} on role attributes {role_attributes}. Checked roles: {[r['name'] for r in user_roles]}")
                 raise HTTPException(status_code=403)
             return wrapper
         return decorator

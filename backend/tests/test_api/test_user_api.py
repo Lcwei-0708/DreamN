@@ -83,7 +83,8 @@ async def test_change_password_success(client):
     with patch("extensions.keycloak.KeycloakExtension.get_user_id", return_value="user123"), \
          patch("extensions.keycloak.KeycloakOpenID.a_userinfo", return_value={"sub": "user123", "preferred_username": "testuser"}), \
          patch("extensions.keycloak.KeycloakOpenID.a_token", new_callable=AsyncMock, return_value={"access_token": "abc"}), \
-         patch("extensions.keycloak.KeycloakAdmin.a_set_user_password", new_callable=AsyncMock, return_value=None):
+         patch("extensions.keycloak.KeycloakAdmin.a_set_user_password", new_callable=AsyncMock, return_value=None), \
+         patch("extensions.keycloak.KeycloakAdmin.a_user_logout", new_callable=AsyncMock, return_value=None):
         response = await client.put(
             "/api/user/change-password",
             headers={"Authorization": f"Bearer {fake_token}"},

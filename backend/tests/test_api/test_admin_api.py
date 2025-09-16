@@ -94,7 +94,8 @@ async def test_create_user_success(client):
             "lastName": "User",
             "phone": "0987654321",
             "password": "strongpassword123",
-            "enabled": True
+            "enabled": True,
+            "roles": []
         }
         response = await client.post(
             "/api/admin/users", 
@@ -126,7 +127,8 @@ async def test_create_user_email_exists(client):
             "firstName": "Test",
             "lastName": "User",
             "password": "password123",
-            "enabled": True
+            "enabled": True,
+            "roles": []  # 加入 roles 欄位
         }
         response = await client.post(
             "/api/admin/users", 
@@ -171,7 +173,7 @@ async def test_update_user_not_found(client):
     fake_role_info = {"attributes": {"admin": ["true"]}}
 
     def mock_get_user_error(*args, **kwargs):
-        raise Exception("not found")
+        raise Exception("404: User not found")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -220,7 +222,7 @@ async def test_delete_users_partial_success(client):
         if user_id == "user123":
             return None
         else:
-            raise Exception("User not found")
+            raise Exception("404: User not found")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -285,7 +287,8 @@ async def test_reset_password_success(client):
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_roles_of_user", new_callable=AsyncMock, return_value=fake_user_roles), \
          patch("extensions.keycloak.KeycloakAdmin.a_get_realm_role", new_callable=AsyncMock, return_value=fake_role_info), \
-         patch("extensions.keycloak.KeycloakAdmin.a_set_user_password", return_value=None):
+         patch("extensions.keycloak.KeycloakAdmin.a_set_user_password", return_value=None), \
+         patch("extensions.keycloak.KeycloakAdmin.a_user_logout", return_value=None):
         payload = {"password": "newpassword123"}
         response = await client.post(
             "/api/admin/users/user123/reset-password", 
@@ -302,7 +305,7 @@ async def test_reset_password_user_not_found(client):
     fake_role_info = {"attributes": {"admin": ["true"]}}
 
     def mock_reset_password_error(*args, **kwargs):
-        raise Exception("not found")
+        raise Exception("404: User not found")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -386,7 +389,7 @@ async def test_create_role_already_exists(client):
     fake_role_info = {"attributes": {"admin": ["true"]}}
 
     def mock_create_role_error(*args, **kwargs):
-        raise Exception("Role exists")
+        raise Exception("409: Role exists")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -434,7 +437,7 @@ async def test_update_role_not_found(client):
     def mock_get_role_error(*args, **kwargs):
         if args[0] == "admin":  # Permission check
             return fake_role_info
-        raise Exception("not found")
+        raise Exception("404: Role not found")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -484,7 +487,7 @@ async def test_update_role_attributes_not_found(client):
     def mock_get_role_error(*args, **kwargs):
         if args[0] == "admin":  # Permission check
             return fake_role_info
-        raise Exception("not found")
+        raise Exception("404: Role not found")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \
@@ -526,7 +529,7 @@ async def test_delete_role_not_found(client):
     def mock_delete_role_error(*args, **kwargs):
         if args[0] == "admin":  # Permission check for get_realm_role  
             return fake_role_info
-        raise Exception("not found")
+        raise Exception("404: Role not found")
 
     with patch("extensions.keycloak.KeycloakExtension.verify_token", new_callable=AsyncMock, return_value=True), \
          patch("extensions.keycloak.KeycloakExtension.get_user_id", new_callable=AsyncMock, return_value="user123"), \

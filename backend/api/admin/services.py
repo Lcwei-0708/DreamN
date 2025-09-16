@@ -159,7 +159,7 @@ async def create_user(user_data: CreateUserRequest) -> CreateUserResponse:
     """Create a new user"""
     try:
         # Check if trying to assign super role
-        if user_data.roles and settings.KEYCLOAK_SUPER_ROLE in user_data.roles:
+        if hasattr(user_data, 'roles') and user_data.roles and settings.KEYCLOAK_SUPER_ROLE in user_data.roles:
             raise SuperRoleOperationException("Cannot assign super role to new user")
         
         # Prepare attributes
