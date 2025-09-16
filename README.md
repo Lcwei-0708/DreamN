@@ -8,6 +8,8 @@
 - ⚛️ **Frontend**: Built with React, offering a fast and modern user interface.
 - 🚀 **Backend**: Powered by FastAPI, providing a robust and flexible API layer.
 - 🛢️ **Database**: Uses MariaDB for reliable and high-performance data storage.
+- 🗄️ **Database Management**: phpMyAdmin for MariaDB database management.
+- 📈 **Time Series Database**: InfluxDB provides efficient storage and retrieval of time-series data.
 - 🔀 **Reverse Proxy**: Nginx serves as a reverse proxy, efficiently routing traffic to the appropriate services.
 - 📊 **Log Management**: Grafana provides log visualization and monitoring dashboards.
 - 🐳 **Dockerized**: All services are containerized with Docker Compose for easy deployment.
