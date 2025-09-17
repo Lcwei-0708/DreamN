@@ -193,7 +193,6 @@ async def update_modbus_controller(controller_id: str, request: ModbusController
             update_data["timeout"] = request.timeout
         
         update_data["status"] = True
-        update_data["updated_at"] = datetime.now()
         
         await db.execute(
             update(ModbusController)

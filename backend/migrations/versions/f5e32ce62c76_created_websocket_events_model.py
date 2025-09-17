@@ -25,8 +25,10 @@ def upgrade() -> None:
     sa.Column('id', sa.String(length=36), nullable=False, comment='事件 ID'),
     sa.Column('user_id', sa.String(length=36), nullable=False, comment='使用者 ID'),
     sa.Column('event_type', sa.String(length=50), nullable=False, comment='事件類型'),
-    sa.Column('event_time', sa.DateTime(), nullable=False, comment='事件時間'),
+    sa.Column('event_time', sa.TIMESTAMP(), nullable=False, comment='事件時間'),
     sa.Column('ip_address', sa.String(length=50), nullable=True, comment='連線 IP'),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True, comment='建立時間'),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), nullable=True, comment='更新時間'),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###

@@ -28,8 +28,8 @@ def upgrade() -> None:
     sa.Column('port', sa.Integer(), nullable=False, comment='TCP 連接埠'),
     sa.Column('timeout', sa.Integer(), nullable=False, comment='逾時秒數'),
     sa.Column('status', sa.Boolean(), nullable=False, comment='連線狀態 (True=已連線, False=未連線)'),
-    sa.Column('created_at', sa.DateTime(), nullable=True, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(), nullable=True, comment='更新時間'),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True, comment='建立時間'),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), nullable=True, comment='更新時間'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('modbus_point',
@@ -46,8 +46,8 @@ def upgrade() -> None:
     sa.Column('unit', sa.String(length=32), nullable=True, comment='單位'),
     sa.Column('min_value', sa.Float(), nullable=True, comment='最小值'),
     sa.Column('max_value', sa.Float(), nullable=True, comment='最大值'),
-    sa.Column('created_at', sa.DateTime(), nullable=True, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(), nullable=True, comment='更新時間'),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True, comment='建立時間'),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), nullable=True, comment='更新時間'),
     sa.ForeignKeyConstraint(['controller_id'], ['modbus_controller.id'], ),
     sa.PrimaryKeyConstraint('id')
     )

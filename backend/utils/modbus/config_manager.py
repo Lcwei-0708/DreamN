@@ -246,8 +246,7 @@ class ModbusConfigManager:
             .where(ModbusController.id == existing_controller.id)
             .values(
                 name=controller_data.get("name"),
-                timeout=controller_data.get("timeout", 10),
-                updated_at=datetime.now()
+                timeout=controller_data.get("timeout", 10)
             )
         )
         
@@ -404,8 +403,7 @@ class ModbusConfigManager:
                 formula=point_data.get("formula"),
                 unit=point_data.get("unit"),
                 min_value=point_data.get("min_value"),
-                max_value=point_data.get("max_value"),
-                updated_at=datetime.now()
+                max_value=point_data.get("max_value")
             )
         )
         

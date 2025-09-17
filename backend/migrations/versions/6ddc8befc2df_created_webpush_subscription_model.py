@@ -28,8 +28,8 @@ def upgrade() -> None:
     sa.Column('keys', sa.JSON(), nullable=False, comment='訂閱的 Keys'),
     sa.Column('is_active', sa.Boolean(), nullable=True, comment='是否有效'),
     sa.Column('user_agent', sa.String(length=255), nullable=False, comment='使用者代理'),
-    sa.Column('created_at', sa.DateTime(), nullable=True, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(), nullable=True, comment='更新時間'),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True, comment='建立時間'),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), nullable=True, comment='更新時間'),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('endpoint')
     )

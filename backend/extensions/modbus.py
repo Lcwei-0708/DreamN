@@ -25,7 +25,7 @@ class ModbusManager:
                 await db.execute(
                     update(ModbusController)
                     .where(ModbusController.id == controller_id)
-                    .values(status=status, updated_at=datetime.now())
+                    .values(status=status)
                 )
                 await db.commit()
                 break

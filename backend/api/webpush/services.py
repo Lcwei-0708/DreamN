@@ -54,7 +54,6 @@ async def subscribe_webpush(db: AsyncSession, token: str, endpoint: str, keys: d
         
         result = await db.execute(select(WebPushSubscription).filter_by(endpoint=endpoint))
         subscribe = result.scalars().first()
-        now = datetime.now()
         
         if subscribe:
             if subscribe.user_id != user_id:
@@ -62,16 +61,13 @@ async def subscribe_webpush(db: AsyncSession, token: str, endpoint: str, keys: d
             subscribe.keys = keys
             subscribe.user_agent = user_agent
             subscribe.is_active = True
-            subscribe.updated_at = now
         else:
             subscribe = WebPushSubscription(
                 user_id=user_id,
                 endpoint=endpoint,
                 keys=keys,
                 user_agent=user_agent,
-                is_active=True,
-                created_at=now,
-                updated_at=now
+                is_active=True
             )
             db.add(subscribe)
         
@@ -98,7 +94,6 @@ async def unsubscribe_webpush(db: AsyncSession, token: str, endpoint: str):
         logger.info(f"subscribe: {subscribe}")
         if subscribe and subscribe.user_id == user_id:
             subscribe.is_active = False
-            subscribe.updated_at = datetime.now()
             await db.flush()
             await db.commit()
             await db.refresh(subscribe)

@@ -1,7 +1,6 @@
 import uuid
-import datetime
 from core.database import Base
-from sqlalchemy import Column, String, DateTime, JSON, Text, Boolean
+from sqlalchemy import Column, String, JSON, Text, Boolean, TIMESTAMP, text
 
 class WebPushSubscription(Base):
     __tablename__ = "webpush_subscription"
@@ -12,8 +11,8 @@ class WebPushSubscription(Base):
     keys = Column(JSON, nullable=False, comment="訂閱的 Keys")
     is_active = Column(Boolean, default=True, comment="是否有效")
     user_agent = Column(String(255), nullable=False, comment="使用者代理")
-    created_at = Column(DateTime, default=datetime.datetime.now, comment="建立時間")
-    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now, comment="更新時間")
+    created_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), comment="建立時間")
+    updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment="更新時間")
 
     def __repr__(self):
         return f"<WebPushSubscription user_id={self.user_id} endpoint={self.endpoint}>"

@@ -36,10 +36,15 @@ from core.config import settings
 
 def include_object(object, name, type_, reflected, compare_to):
     """
-    Filter out APScheduler related tables to avoid Alembic automatically generating migrations to delete these tables
+    Filter out APScheduler related tables and views to avoid Alembic automatically generating migrations
     """
     if type_ == "table" and name == "apscheduler_jobs":
         return False
+    
+    # Filter out tables marked as views (is_view=True)
+    if type_ == "table" and hasattr(object, 'info') and object.info.get('is_view', False):
+        return False
+        
     return True
 
 def run_migrations_offline() -> None:

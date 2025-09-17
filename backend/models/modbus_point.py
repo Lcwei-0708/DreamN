@@ -1,7 +1,6 @@
 import uuid
-import datetime
 from core.database import Base
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Float
+from sqlalchemy import Column, String, Integer, Text, ForeignKey, Float, TIMESTAMP, text
 
 class ModbusPoint(Base):
     __tablename__ = "modbus_point"
@@ -19,8 +18,8 @@ class ModbusPoint(Base):
     unit = Column(String(32), comment="單位")
     min_value = Column(Float, comment="最小值")
     max_value = Column(Float, comment="最大值")
-    created_at = Column(DateTime, default=datetime.datetime.now, comment="建立時間")
-    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now, comment="更新時間")
+    created_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP'), comment="建立時間")
+    updated_at = Column(TIMESTAMP, server_default=text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), comment="更新時間")
 
     def __repr__(self):
         return f"<ModbusPoint id={self.id} name={self.name} type={self.type} address={self.address} unit_id={self.unit_id}>"
