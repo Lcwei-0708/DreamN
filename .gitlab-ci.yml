@@ -1,0 +1,7 @@
+stages:
+  - test
+
+include:
+  - local: '.gitlab/workflows/variables.yml'
+  - local: '.gitlab/workflows/services.yml'
+  - local: '.gitlab/workflows/test_backend.yml'

@@ -1,3 +1,6 @@
+[![GitLab CI](http://172.16.0.206:50000/it/DreamN/badges/main/pipeline.svg)](http://172.16.0.206:50000/it/DreamN/-/pipelines)
+[![Code Coverage](http://172.16.0.206:50000/it/DreamN/badges/main/coverage.svg)](http://172.16.0.206:50000/it/DreamN/-/pipelines)
+
 # DreamN
 
 **DreamN** is a containerized fullstack web development template that uses **Docker Compose** to integrate **React**, **FastAPI**, **MariaDB**, and **Nginx**. It provides clear separation between frontend and backend services, helping you quickly build and deploy web applications while maintaining clear architecture and easy maintenance.
@@ -12,6 +15,7 @@
 - 📈 **Time Series Database**: InfluxDB provides efficient storage and retrieval of time-series data.
 - 🔀 **Reverse Proxy**: Nginx serves as a reverse proxy, efficiently routing traffic to the appropriate services.
 - 📊 **Log Management**: Grafana provides log visualization and monitoring dashboards.
+- ⚙️ **CI/CD Testing**: Automated testing with GitLab CI and coverage reporting.
 - 🐳 **Dockerized**: All services are containerized with Docker Compose for easy deployment.
 
 

@@ -1,0 +1,50 @@
+test-backend:
+  stage: test
+  image: python:3.11
+  before_script:
+    - apt-get update && apt-get install -y redis-tools mariadb-client curl netcat-openbsd
+    - pip install --upgrade pip
+    - cd backend
+    - pip install -r requirements.txt
+  script:
+    - |
+      echo "Checking service containers..."
+      docker ps -a || echo "Docker ps not available"
+      echo "Waiting for services to start..."
+      sleep 45
+      echo "Testing MariaDB connection..."
+      nc -z mariadb 3306 && echo "MariaDB port is open" || echo "MariaDB port is closed"
+      echo "Attempting to connect to MariaDB..."
+      timeout 30 bash -c 'until mysql -h mariadb -P 3306 -u root -ptestpassword -e "SELECT 1;" >/dev/null 2>&1; do echo "Waiting for MariaDB..."; sleep 3; done' || echo "MariaDB connection failed"
+      echo "Testing Redis connection..."
+      nc -z redis 6379 && echo "Redis port is open" || echo "Redis port is closed"
+      echo "Attempting to connect to Redis..."
+      timeout 30 bash -c 'until redis-cli -h redis -p 6379 ping; do echo "Waiting for Redis..."; sleep 3; done' || echo "Redis connection failed"
+      echo "Environment variables:"
+      env | grep -E "(DATABASE|REDIS|MARIADB|INFLUXDB)" || echo "No database environment variables found"
+      echo "Running tests with coverage..."
+      pytest --cov=. --cov-report=xml --cov-report=html --cov-report=term-missing -v
+      echo "Creating coverage package..."
+      mkdir -p coverage-report
+      cp coverage.xml coverage-report/
+      cp -r htmlcov coverage-report/
+      cp .coverage coverage-report/
+      echo "Generating GitLab coverage report..."
+      coverage report --format=text | grep "TOTAL" | awk '{print "TOTAL: " $4}' > coverage-report/coverage.txt
+      cat coverage-report/coverage.txt
+      echo "Coverage report content:"
+      coverage report --format=text
+  coverage: '/TOTAL.*?(\d+\.\d+%)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: backend/coverage.xml
+    paths:
+      - backend/coverage-report/
+    expire_in: 1 week
+  variables:
+    DATABASE_URL: $TEST_DATABASE_URL
+    DATABASE_URL_TEST: $TEST_DATABASE_URL
+    REDIS_URL: $TEST_REDIS_URL
+    SECRET_KEY: $TEST_SECRET_KEY

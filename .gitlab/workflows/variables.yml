@@ -1,0 +1,44 @@
+variables:
+  PYTHON_VERSION: "3.11"
+  
+  # Database settings
+  MARIADB_ROOT_PASSWORD: testpassword
+  MARIADB_DATABASE: test_db
+  MARIADB_USER: test_user
+  MARIADB_PASSWORD: test_password
+  
+  # Test environment variables
+  TEST_DATABASE_URL: mysql+pymysql://test_user:test_password@mariadb:3306/test_db
+  TEST_REDIS_URL: redis://redis:6379/0
+  TEST_SECRET_KEY: test-secret-key-for-gitlab-ci
+  
+  # JWT settings
+  ALGORITHM: HS256
+  ACCESS_TOKEN_EXPIRE_MINUTES: 30
+  LOG_LEVEL: WARNING
+  DEBUG: False
+  
+  # Security settings
+  FAIL_LIMIT: 10
+  FAIL_WINDOW: 600
+  BLOCK_TIME: 1800
+  
+  # Keycloak settings
+  KEYCLOAK_SERVER_URL: https://test-keycloak.example.com
+  KEYCLOAK_REALM: test-realm
+  KEYCLOAK_CLIENT: test-client
+  KEYCLOAK_ADMIN_CLIENT: test-admin-client
+  KEYCLOAK_ADMIN_CLIENT_SECRET: test-admin-secret
+  KEYCLOAK_VERIFY: False
+  KEYCLOAK_SUPER_ROLE: tsadmin
+  
+  # Web Push settings
+  VAPID_PUBLIC_KEY: test-public-key
+  VAPID_PRIVATE_KEY: test-private-key
+  VAPID_EMAIL: test@example.com
+  
+  # InfluxDB settings
+  INFLUXDB_URL: http://influxdb:8086
+  INFLUXDB_TOKEN: test-token
+  INFLUXDB_ORG: test-org
+  INFLUXDB_BUCKET: test-bucket

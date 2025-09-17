@@ -1,0 +1,12 @@
+services:
+  - name: mariadb:11.3
+    alias: mariadb
+    variables:
+      MARIADB_ROOT_PASSWORD: testpassword
+      MARIADB_DATABASE: test_db
+      MARIADB_USER: test_user
+      MARIADB_PASSWORD: test_password
+      MARIADB_AUTO_UPGRADE: 1
+      MARIADB_DISABLE_UPGRADE_BACKUP: 1
+  - name: redis:8.0.3
+    alias: redis
