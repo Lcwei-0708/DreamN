@@ -15,9 +15,9 @@ from .schema import (
     ModbusPointBatchCreateRequest, ModbusPointUpdateRequest, ModbusPointResponse, ModbusPointListResponse,
     ModbusPointDeleteRequest, ModbusPointDeleteResponse, ModbusPointDataResponse, ModbusPointValueResponse,
     ModbusPointWriteRequest, ModbusPointWriteResponse,
-    ModbusPointBatchCreateSimpleResponse, ModbusPointBatchCreateResult,
+    ModbusPointBatchCreateResponseInternal, ModbusPointBatchCreateResult,
     ModbusControllerValuesResponse,
-    ModbusConfigImportSimpleResponse, ModbusPointImportResult,
+    ModbusConfigImportResponseInternal, ModbusPointImportResult,
     ImportMode
 )
 from utils.custom_exception import (
@@ -321,7 +321,7 @@ async def test_modbus_controller(request: ModbusControllerCreateRequest, modbus:
 async def create_modbus_points_batch(
     request: ModbusPointBatchCreateRequest, 
     db: AsyncSession
-) -> ModbusPointBatchCreateSimpleResponse:
+) -> ModbusPointBatchCreateResponseInternal:
     """Create multiple Modbus points for a controller"""
     try:
         # Verify controller exists
@@ -395,26 +395,13 @@ async def create_modbus_points_batch(
                 ))
                 failed_count += 1
         
-        if failed_count == 0 and skipped_count == 0:
-            return ModbusPointBatchCreateSimpleResponse(
-                results=results
-            )
-        elif success_count == 0:
-            return ModbusPointBatchCreateSimpleResponse(
-                results=results,
-                total_requested=len(request.points),
-                success_count=success_count,
-                skipped_count=skipped_count,
-                failed_count=failed_count
-            )
-        else:
-            return ModbusPointBatchCreateSimpleResponse(
-                results=results,
-                total_requested=len(request.points),
-                success_count=success_count,
-                skipped_count=skipped_count,
-                failed_count=failed_count
-            )
+        return ModbusPointBatchCreateResponseInternal(
+            results=results,
+            total_requested=len(request.points),
+            success_count=success_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count
+        )
         
     except ModbusControllerNotFoundException:
         raise
@@ -704,8 +691,10 @@ async def read_modbus_controller_points_data(controller_id: str, db: AsyncSessio
                 
                 point_value = ModbusPointValueResponse(
                     point_id=point.id,
-                    name=point.name,
-                    value=final_value
+                    point_name=point.name,
+                    value=final_value,
+                    unit=point.unit,
+                    timestamp=datetime.now().isoformat()
                 )
                 
                 successful_values.append(point_value)
@@ -787,7 +776,7 @@ async def import_modbus_configuration_from_file(
     format: str, 
     db: AsyncSession, 
     import_mode: ImportMode
-) -> ModbusConfigImportSimpleResponse:
+) -> ModbusConfigImportResponseInternal:
     """
     Import Modbus configuration from file (single controller only)
         
@@ -810,15 +799,7 @@ async def import_modbus_configuration_from_file(
         skipped_count = sum(1 for p in points if p["status"] == "skipped")
         failed_count = sum(1 for p in points if p["status"] in ["failed", "invalid", "error"])
 
-        extra_stats = {}
-        if success_count > 0 and (skipped_count > 0 or failed_count > 0):
-            extra_stats = {
-                "success_count": success_count,
-                "skipped_count": skipped_count,
-                "failed_count": failed_count,
-            }
-
-        response = ModbusConfigImportSimpleResponse(
+        response = ModbusConfigImportResponseInternal(
             controller_id=controller_result.get("controller_id"),
             controller_name=controller_result["controller_name"],
             points=[
@@ -830,8 +811,9 @@ async def import_modbus_configuration_from_file(
                 ) for p in controller_result["points"]
             ],
             total_points=total_points,
-            import_time=datetime.now().isoformat(),
-            **extra_stats
+            success_count=success_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count
         )
         
         response._status = controller_result["status"]

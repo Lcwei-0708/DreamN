@@ -5,13 +5,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from extensions.modbus import get_modbus, ModbusManager
 from utils.response import APIResponse, parse_responses, common_responses
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form, Body
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
 from utils.custom_exception import (
     ModbusConnectionException, ModbusControllerNotFoundException,
     ModbusPointNotFoundException, ModbusReadException, ModbusValidationException,
     ModbusWriteException, ModbusRangeValidationException,
     ModbusConfigException, ModbusConfigFormatException,
-    ModbusControllerDuplicateException, ModbusPointDuplicateException, ServerException
+    ModbusControllerDuplicateException, ModbusPointDuplicateException
 )
 from .services import (
     create_modbus_controller, get_modbus_controllers, update_modbus_controller, delete_modbus_controllers,
@@ -36,11 +36,12 @@ from .schema import (
     ModbusControllerDeleteFailedResponse, ModbusPointDeleteFailedResponse,
     modbus_controller_delete_response_example, modbus_point_delete_response_example,
     modbus_controller_delete_failed_response_example, modbus_point_delete_failed_response_example,
-    ModbusPointBatchCreateSimpleResponse, ModbusConfigImportSimpleResponse,
     modbus_point_batch_create_simple_response_example, modbus_point_batch_create_partial_response_example,
     modbus_config_import_simple_response_example, modbus_config_import_partial_response_example,
     modbus_config_import_failed_response_example,
-    PointType, ConfigFormat, ImportMode
+    PointType, ConfigFormat, ImportMode,
+    ModbusPointBatchCreateResponse, ModbusConfigImportResponse, 
+    create_modbus_point_batch_response, create_modbus_config_import_response
 )
 
 router = APIRouter(tags=["modbus"])
@@ -149,8 +150,8 @@ async def update_controller(
     }, default=common_responses)
 )
 async def delete_controllers(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    request: ModbusControllerDeleteRequest = Body(...)
+    request: ModbusControllerDeleteRequest,
+    db: Annotated[AsyncSession, Depends(get_db)]
 ):
     """Delete multiple Modbus controllers. Related points will be deleted automatically."""
     try:
@@ -206,13 +207,13 @@ async def get_points_by_controller(
 
 @router.post(
     "/points",
-    response_model=APIResponse[ModbusPointBatchCreateSimpleResponse],
+    response_model=APIResponse[ModbusPointBatchCreateResponse],
     response_model_exclude_unset=True,
     summary="Create multiple Modbus points for a controller",
     responses=parse_responses({
-        200: ("All points created successfully", ModbusPointBatchCreateSimpleResponse, modbus_point_batch_create_simple_response_example),
-        207: ("Points created with partial success", ModbusPointBatchCreateSimpleResponse, modbus_point_batch_create_partial_response_example),
-        400: ("All points failed to create", ModbusPointBatchCreateSimpleResponse, modbus_point_batch_create_failed_response_example),
+        200: ("All points created successfully", ModbusPointBatchCreateResponse, modbus_point_batch_create_simple_response_example),
+        207: ("Points created with partial success", ModbusPointBatchCreateResponse, modbus_point_batch_create_partial_response_example),
+        400: ("All points failed to create", ModbusPointBatchCreateResponse, modbus_point_batch_create_failed_response_example),
         404: ("Controller not found", None)
     }, default=common_responses)
 )
@@ -224,22 +225,36 @@ async def create_points_batch(
     try:
         result = await create_modbus_points_batch(request, db)
         
-        if result.failed_count is None and result.skipped_count is None:
+        if result.success_count > 0 and result.skipped_count == 0 and result.failed_count == 0:
             status_code = 200
-            message = f"All points created successfully"
+            message = "All points created successfully"
+            response_data = create_modbus_point_batch_response(result)
         elif result.success_count == 0:
             status_code = 400
-            message = f"All points failed to create"
+            message = "All points failed to create"
+            response_data = {
+                "results": result.results,
+                "total_requested": result.total_requested,
+                "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count
+            }
         else:
             status_code = 207
-            message = f"Points created with partial success"
+            message = "Points created with partial success"
+            response_data = {
+                "results": result.results,
+                "total_requested": result.total_requested,
+                "success_count": result.success_count,
+                "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count
+            }
         
-        response_data = APIResponse(code=status_code, message=message, data=result)
+        api_response = APIResponse(code=status_code, message=message, data=response_data)
         
         if status_code != 200:
-            raise HTTPException(status_code=status_code, detail=response_data.dict(exclude_none=True))
+            raise HTTPException(status_code=status_code, detail=api_response.dict(exclude_none=True))
         
-        return response_data
+        return api_response
         
     except HTTPException:
         raise
@@ -288,8 +303,8 @@ async def update_point(
     }, default=common_responses)
 )
 async def delete_points(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    request: ModbusPointDeleteRequest = Body(...)
+    request: ModbusPointDeleteRequest,
+    db: Annotated[AsyncSession, Depends(get_db)]
 ):
     """Delete multiple Modbus points"""
     try:
@@ -371,13 +386,16 @@ async def write_point_data(
         result = await write_modbus_point_data(point_id, payload, db, modbus)
         return APIResponse(code=200, message="Point data written successfully", data=result)
     except ModbusWriteException:
-        raise HTTPException(status_code=400, detail="Write operation failed")
+        raise HTTPException(status_code=500, detail="Write operation failed")
     except ModbusPointNotFoundException:
         raise HTTPException(status_code=404, detail="Point not found")
     except ModbusControllerNotFoundException:
         raise HTTPException(status_code=404, detail="Controller not found")
-    except ModbusValidationException:
-        raise HTTPException(status_code=409, detail="Point does not support writing or validation failed")
+    except ModbusValidationException as e:
+        if "does not support writing" in str(e):
+            raise HTTPException(status_code=409, detail="Point does not support writing or validation failed")
+        else:
+            raise HTTPException(status_code=400, detail="Point does not support writing or validation failed")
     except ModbusRangeValidationException:
         raise HTTPException(status_code=422, detail="Value is outside the valid range")
     except Exception:
@@ -385,14 +403,14 @@ async def write_point_data(
 
 @router.post(
     "/import/controller",
-    response_model=APIResponse[Union[ModbusConfigImportSimpleResponse]],
+    response_model=APIResponse[ModbusConfigImportResponse],
     response_model_exclude_unset=True,
     summary="Import Modbus Controller Configuration",
     responses=parse_responses({
-        200: ("Controller imported successfully", ModbusConfigImportSimpleResponse, modbus_config_import_simple_response_example),
-        207: ("Controller imported with partial success", ModbusConfigImportSimpleResponse, modbus_config_import_partial_response_example),
-        400: ("Controller failed to import / All points failed to imports", ModbusConfigImportSimpleResponse, modbus_config_import_failed_response_example),
-        409: ("Controller already exists / All points already exists", ModbusConfigImportSimpleResponse, modbus_config_import_simple_response_example),
+        200: ("Controller imported successfully", ModbusConfigImportResponse, modbus_config_import_simple_response_example),
+        207: ("Controller imported with partial success", ModbusConfigImportResponse, modbus_config_import_partial_response_example),
+        400: ("Controller failed to import / All points failed to imports", ModbusConfigImportResponse, modbus_config_import_failed_response_example),
+        409: ("Controller already exists / All points already exists", ModbusConfigImportResponse, modbus_config_import_simple_response_example),
         415: ("Unsupported configuration format", None)
     }, default=common_responses)
 )
@@ -417,32 +435,39 @@ async def import_config(
         
         result = await import_modbus_configuration_from_file(config, config_format, db, duplicate_handling)
         
-        if result._status == "success":
+        if result.success_count > 0 and result.skipped_count == 0 and result.failed_count == 0:
             status_code = 200
             message = "Controller imported successfully"
-        elif result._status == "skipped_controller":
-            status_code = 409
-            message = "Controller already exists"
-        elif result._status == "skipped_points":
-            status_code = 409
-            message = "All points already exists"
-        elif result._status == "partial_success":
+            response_data = create_modbus_config_import_response(result)
+        elif result.success_count == 0:
+            status_code = 400
+            message = "All points failed to import"
+            response_data = {
+                "controller_id": result.controller_id,
+                "controller_name": result.controller_name,
+                "points": result.points,
+                "total_points": result.total_points,
+                "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count
+            }
+        else:
             status_code = 207
             message = "Controller imported with partial success"
-        elif result._status == "controller_failed":
-            status_code = 400
-            message = "Controller failed to import"
-        elif result._status == "points_failed":
-            status_code = 400
-            message = "All points failed to imports"
-        else:
-            raise ServerException(message="Import failed", details=result)
+            response_data = {
+                "controller_id": result.controller_id,
+                "controller_name": result.controller_name,
+                "points": result.points,
+                "total_points": result.total_points,
+                "success_count": result.success_count,
+                "skipped_count": result.skipped_count,
+                "failed_count": result.failed_count
+            }
         
-        response_data = APIResponse(code=status_code, message=message, data=result)
+        api_response = APIResponse(code=status_code, message=message, data=response_data)
         
         if status_code != 200:
-            raise HTTPException(status_code=status_code, detail=response_data.dict(exclude_none=True))        
-        return response_data
+            raise HTTPException(status_code=status_code, detail=api_response.dict(exclude_none=True))        
+        return api_response
         
     except HTTPException:
         raise

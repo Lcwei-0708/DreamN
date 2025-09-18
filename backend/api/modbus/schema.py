@@ -48,7 +48,7 @@ class ModbusControllerListResponse(BaseModel):
     controllers: List[ModbusControllerResponse] = Field(..., description="控制器列表")
 
 class ModbusControllerDeleteRequest(BaseModel):
-    controller_ids: List[str] = Field(..., description="要刪除的控制器 ID 列表")
+    controller_ids: List[str] = Field(..., min_length=1, description="要刪除的控制器 ID 列表")
 
 class ModbusControllerDeleteResponse(BaseModel):
     total_requested: int = Field(..., description="請求的總控制器數")
@@ -114,7 +114,7 @@ class ModbusPointListResponse(BaseModel):
     points: List[ModbusPointResponse] = Field(..., description="點位列表")
 
 class ModbusPointDeleteRequest(BaseModel):
-    point_ids: List[str] = Field(..., description="要刪除的點位 ID 列表")
+    point_ids: List[str] = Field(..., min_length=1, description="要刪除的點位 ID 列表")
 
 class ModbusPointDeleteResponse(BaseModel):
     total_requested: int = Field(..., description="請求的總點位數")
@@ -143,8 +143,10 @@ class ModbusPointDataResponse(BaseModel):
 
 class ModbusPointValueResponse(BaseModel):
     point_id: str = Field(..., description="點位 ID")
-    name: str = Field(..., description="點位名稱")
+    point_name: str = Field(..., description="點位名稱")
     value: Union[bool, int, float, List, None] = Field(..., description="最終數值")
+    unit: Optional[str] = Field(None, description="單位")
+    timestamp: str = Field(..., description="讀取時間")
 
 class ModbusControllerValuesResponse(BaseModel):
     total: int = Field(..., description="總點位數")
@@ -175,12 +177,23 @@ class ModbusPointBatchCreateResult(BaseModel):
     status: str = Field(..., description="操作狀態(success: 成功, skipped: 跳過, invalid: 無效, error: 錯誤)", example="success|skipped|invalid|error")
     message: str = Field(..., description="狀態訊息")
 
-class ModbusPointBatchCreateSimpleResponse(BaseModel):
+class ModbusPointBatchCreateResponseInternal(BaseModel):
     results: List[ModbusPointBatchCreateResult] = Field(..., description="每個點位的建立結果")
     total_requested: Optional[int] = Field(None, description="請求的總點位數")
     success_count: Optional[int] = Field(None, description="成功建立的點位數")
     skipped_count: Optional[int] = Field(None, description="被跳過的點位數")
     failed_count: Optional[int] = Field(None, description="建立失敗的點位數")
+
+class ModbusPointBatchCreateResponse(BaseModel):
+    results: List[ModbusPointBatchCreateResult] = Field(..., description="每個點位的建立結果")
+    total_requested: Optional[int] = Field(None, description="請求的總點位數")
+
+def create_modbus_point_batch_response(internal_response: ModbusPointBatchCreateResponseInternal) -> ModbusPointBatchCreateResponse:
+    """Create modbus point batch response"""
+    return ModbusPointBatchCreateResponse(
+        results=internal_response.results,
+        total_requested=internal_response.total_requested
+    )
 
 class ModbusPointImportResult(BaseModel):
     point_id: Optional[str] = Field(None, description="點位 ID")
@@ -188,8 +201,7 @@ class ModbusPointImportResult(BaseModel):
     status: str = Field(..., description="操作狀態(success: 成功, skipped: 跳過, failed: 失敗)")
     message: str = Field(..., description="狀態訊息")
 
-class ModbusConfigImportSimpleResponse(BaseModel):
-    """Modbus configuration import simple response (single controller only)"""
+class ModbusConfigImportResponseInternal(BaseModel):
     controller_id: Optional[str] = Field(None, description="控制器 ID")
     controller_name: str = Field(..., description="控制器名稱")
     points: List[ModbusPointImportResult] = Field(..., description="點位匯入結果")
@@ -197,7 +209,21 @@ class ModbusConfigImportSimpleResponse(BaseModel):
     success_count: Optional[int] = Field(None, description="成功點位數")
     skipped_count: Optional[int] = Field(None, description="跳過點位數")
     failed_count: Optional[int] = Field(None, description="失敗點位數")
-    import_time: str = Field(..., description="匯入時間")
+
+class ModbusConfigImportResponse(BaseModel):
+    controller_id: Optional[str] = Field(None, description="控制器 ID")
+    controller_name: str = Field(..., description="控制器名稱")
+    points: List[ModbusPointImportResult] = Field(..., description="點位匯入結果")
+    total_points: int = Field(..., description="總點位數")
+
+def create_modbus_config_import_response(internal_response: ModbusConfigImportResponseInternal) -> ModbusConfigImportResponse:
+    """Create modbus config import response"""
+    return ModbusConfigImportResponse(
+        controller_id=internal_response.controller_id,
+        controller_name=internal_response.controller_name,
+        points=internal_response.points,
+        total_points=internal_response.total_points
+    )
 
 class ImportMode(str, Enum):
     """Import mode for handling duplicate controllers and points"""
@@ -422,7 +448,8 @@ modbus_point_batch_create_simple_response_example = {
                 "status": "success",
                 "message": "Created successfully"
             }
-        ]
+        ],
+        "total_requested": 2
     }
 }
 
@@ -474,7 +501,10 @@ modbus_point_batch_create_failed_response_example = {
                 "status": "invalid",
                 "message": "Invalid point"
             }
-        ]
+        ],
+        "total_requested": 2,
+        "skipped_count": 1,
+        "failed_count": 1
     }
 }
 
@@ -492,8 +522,7 @@ modbus_config_import_simple_response_example = {
                 "message": "Imported successfully"
             },
         ],
-        "total_points": 1,
-        "import_time": "2024-01-15T10:30:00.000000"
+        "total_points": 1
     }
 }
 
@@ -524,8 +553,7 @@ modbus_config_import_partial_response_example = {
         "total_points": 3,
         "success_count": 1,
         "skipped_count": 1,
-        "failed_count": 1,
-        "import_time": "2024-01-15T10:30:00.000000"
+        "failed_count": 1
     }
 }
 
@@ -547,6 +575,7 @@ modbus_config_import_failed_response_example = {
             }
         ],
         "total_points": 2,
-        "import_time": "2024-01-15T10:30:00.000000"
+        "skipped_count": 0,
+        "failed_count": 2
     }
 }
